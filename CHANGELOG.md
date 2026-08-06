@@ -18,6 +18,9 @@ First release. A desktop application that opens a folder of audit logs and analy
 - `.json` (a single event or an array) and `.jsonl` / `.ndjson` (one event per line). Formats the
   specification does not define are not read, rather than mapped onto the event model by guesswork.
 - Folder trees are walked recursively, skipping dependency and build directories.
+- Reading is bounded so that an oversized or hostile archive cannot exhaust the window: JSON Lines
+  files are streamed a line at a time, a `.json` document larger than 32 MB is declined before it is
+  read, and a load stops at 100,000 events. Every limit that applies is reported on screen.
 
 ### Analysis
 

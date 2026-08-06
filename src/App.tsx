@@ -119,6 +119,7 @@ function App() {
             {summary.filesRead} files · {events.length} events · {validCount} valid ·{" "}
             {events.length - validCount} invalid
             {summary.filesFailed.length > 0 ? ` · ${summary.filesFailed.length} unreadable` : ""}
+            {summary.filesSkipped.length > 0 ? ` · ${summary.filesSkipped.length} too large` : ""}
           </span>
         ) : null}
         <button
@@ -135,6 +136,26 @@ function App() {
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {loadError ? <p className="load-error">{loadError}</p> : null}
+
+      {summary?.truncated ? (
+        <p className="load-warning">
+          Stopped at {summary.eventLimit.toLocaleString()} events — this folder holds more. What is
+          shown below is the first {summary.eventLimit.toLocaleString()} read, not a sample of the
+          whole: totals, chains and flows describe only that part.
+        </p>
+      ) : null}
+
+      {summary && summary.filesSkipped.length > 0 ? (
+        <p className="load-warning">
+          {summary.filesSkipped.length} file
+          {summary.filesSkipped.length === 1 ? " was" : "s were"} not read:{" "}
+          {summary.filesSkipped
+            .slice(0, 3)
+            .map((notice) => `${notice.file.split(/[/\\]/).pop()} (${notice.reason})`)
+            .join("; ")}
+          {summary.filesSkipped.length > 3 ? ", and others" : ""}.
+        </p>
+      ) : null}
 
       <nav className="tabs">
         <button
