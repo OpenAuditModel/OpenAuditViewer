@@ -123,6 +123,16 @@ body,
   color: var(--bad);
 }
 
+/* Not a failure, but not a detail either: the reader is looking at less than
+ * the folder holds and has to know it. */
+.load-warning {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+
 .tabs {
   display: flex;
   gap: 0.15rem;

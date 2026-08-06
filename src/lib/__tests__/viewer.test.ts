@@ -4,7 +4,7 @@
  * so that any drift from the OpenAuditModel CLI's behavior fails loudly.
  */
 import { describe, expect, it } from "vitest";
-import { parseFile } from "../parse";
+import { isJsonLines, parseFile, parseJsonLine } from "../parse";
 import { lintEvent } from "../privacy/lint-event";
 import { calculateDigest } from "../integrity/digest";
 import { verifyEventIntegrity } from "../integrity/verify-event";
@@ -63,6 +63,36 @@ describe("parseFile", () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((row) => row.valid === false)).toBe(true);
     expect(rows.every((row) => row.event === null)).toBe(true);
+  });
+
+  // The loader streams JSON Lines a line at a time rather than splitting a
+  // whole file, so the per-line parser has to agree with the whole-text one.
+  it("parses a line on its own exactly as it would within a whole file", () => {
+    const line = JSON.stringify(minimalEvent("018f1b70-2c18-7f3a-b46d-000000000060"));
+    const whole = parseFile("stream.jsonl", `${line}\n`);
+    const single = parseJsonLine("stream.jsonl", line, 1);
+
+    expect(single).toBeDefined();
+    expect(single?.valid).toBe(whole[0]?.valid);
+    expect(single?.eventName).toBe(whole[0]?.eventName);
+    expect(single?.privacyFindings.length).toBe(whole[0]?.privacyFindings.length);
+  });
+
+  it("treats a blank line as carrying no event", () => {
+    expect(parseJsonLine("stream.jsonl", "   ", 4)).toBeUndefined();
+    expect(parseJsonLine("stream.jsonl", "", 5)).toBeUndefined();
+  });
+
+  it("names the line a malformed record came from", () => {
+    const row = parseJsonLine("stream.jsonl", "{ not json", 7);
+    expect(row?.valid).toBe(false);
+    expect(row?.errors[0]?.message).toContain("line 7");
+  });
+
+  it("recognizes which extensions are read line by line", () => {
+    expect(isJsonLines("a.jsonl")).toBe(true);
+    expect(isJsonLines("a.NDJSON")).toBe(true);
+    expect(isJsonLines("a.json")).toBe(false);
   });
 });
 

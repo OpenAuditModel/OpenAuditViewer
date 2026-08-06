@@ -177,8 +177,12 @@ binary for a platform nobody has tried would be a claim rather than a release.
 ## Known limitations
 
 - No signature verification, as described above.
-- Loading reads and validates every file before anything renders. The table itself virtualizes and
-  handles large folders, but opening a very large archive takes time up front.
+- Everything read stays in memory, so loading is bounded: JSON Lines files are streamed a line at a
+  time, a single `.json` document over 32 MB is declined rather than read, and a load stops at
+  100,000 events. Each of those is reported on screen — the app will not show you part of a folder
+  without saying so — but it does mean a very large archive cannot be viewed whole.
+- Loading still reads and validates every file before the table fills in. The table virtualizes, so
+  scrolling stays smooth, but the initial pass over a big folder takes time.
 - Only JSON and JSON Lines are read; any other export has to be converted first.
 - Vendored schema and profiles can lag the canonical repository between `sync-vendored` runs.
 - Directory recursion is depth-limited and does not follow symlink cycles.

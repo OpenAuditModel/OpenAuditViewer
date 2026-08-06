@@ -88,25 +88,50 @@ function parseJson(fileName: string, text: string): LoadedEvent[] {
   return documents.map((document) => buildRow(fileName, "json", asRecord(document) ?? null));
 }
 
-function parseJsonLines(fileName: string, text: string): LoadedEvent[] {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
-  return lines.map((line, index) => {
-    try {
-      const parsed = JSON.parse(line);
-      return buildRow(fileName, "jsonl", asRecord(parsed) ?? null);
-    } catch (cause) {
-      return buildRow(fileName, "jsonl", null, {
-        forcedError: `line ${index + 1}: not valid JSON (${(cause as Error).message})`,
-      });
-    }
-  });
+/**
+ * Parses one line of a JSON Lines file.
+ *
+ * Exposed separately so the loader can consume a file as a stream instead of
+ * holding all of its text, and then all of its lines, in memory at once.
+ * Returns undefined for a blank line, which carries no event.
+ */
+export function parseJsonLine(
+  fileName: string,
+  line: string,
+  lineNumber: number,
+): LoadedEvent | undefined {
+  if (line.trim().length === 0) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(line);
+    return buildRow(fileName, "jsonl", asRecord(parsed) ?? null);
+  } catch (cause) {
+    return buildRow(fileName, "jsonl", null, {
+      forcedError: `line ${lineNumber}: not valid JSON (${(cause as Error).message})`,
+    });
+  }
 }
 
-/** Parses one file's text, given its name (used only to pick a format by extension). */
-export function parseFile(fileName: string, text: string): LoadedEvent[] {
+/** True when a file name says its contents are one event per line. */
+export function isJsonLines(fileName: string): boolean {
   const lower = fileName.toLowerCase();
-  if (lower.endsWith(".jsonl") || lower.endsWith(".ndjson")) {
-    return parseJsonLines(fileName, text);
+  return lower.endsWith(".jsonl") || lower.endsWith(".ndjson");
+}
+
+/**
+ * Parses one file's text in full.
+ *
+ * The loader streams JSON Lines rather than calling this, so in the app this
+ * runs only for `.json` documents, which cannot be parsed incrementally. It
+ * remains whole-text for tests and tooling.
+ */
+export function parseFile(fileName: string, text: string): LoadedEvent[] {
+  if (isJsonLines(fileName)) {
+    return text
+      .split(/\r?\n/)
+      .map((line, index) => parseJsonLine(fileName, line, index + 1))
+      .filter((row): row is LoadedEvent => row !== undefined);
   }
   return parseJson(fileName, text);
 }

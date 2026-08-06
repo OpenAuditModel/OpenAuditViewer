@@ -34,7 +34,22 @@ export interface LoadedEvent {
   readonly privacyFindings: readonly import("./privacy/types").PrivacyFinding[];
 }
 
+/** A file the loader did not turn into events, and why. */
+export interface FileNotice {
+  readonly file: string;
+  readonly reason: string;
+}
+
 export interface LoadSummary {
+  /** Files actually parsed. */
   readonly filesRead: number;
-  readonly filesFailed: readonly { readonly file: string; readonly reason: string }[];
+  /** Recognized files found in the folder, including any not read. */
+  readonly filesFound: number;
+  /** Files that could not be read at all. */
+  readonly filesFailed: readonly FileNotice[];
+  /** Files declined before reading, for their size. */
+  readonly filesSkipped: readonly FileNotice[];
+  /** True when loading stopped at the event ceiling: the folder holds more. */
+  readonly truncated: boolean;
+  readonly eventLimit: number;
 }

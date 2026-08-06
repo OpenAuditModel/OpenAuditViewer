@@ -8,7 +8,10 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:allow-read-text-file",
+    "fs:allow-read-text-file-lines",
+    "fs:allow-read-text-file-lines-next",
     "fs:allow-read-dir",
+    "fs:allow-stat",
     "fs:allow-write-text-file",
     {
       "identifier": "opener:allow-open-url",
