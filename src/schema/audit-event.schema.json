@@ -1,0 +1,911 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openauditmodel.org/schemas/audit-event/0.1/schema.json",
+  "title": "OpenAuditModel Audit Event Schema",
+  "description": "Canonical machine-verifiable structure of an OpenAuditModel audit event. Version 0.1 is experimental. Core objects reject unknown properties: domain-specific data belongs in `metadata`, `extensions`, `attributes`, or in an OpenAuditModel profile.",
+  "$comment": "Normative reference: specification/event-model.md. Patterns in this schema deliberately avoid look-around and back-references so that they remain portable across ECMA-262, RE2 and PCRE regular expression engines.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["specVersion", "id", "time", "event", "actor", "resource", "application"],
+  "properties": {
+    "specVersion": {
+      "$comment": "Constant in v0.1. The compatibility strategy for later versions is defined in specification/overview.md.",
+      "description": "OpenAuditModel specification version this event conforms to.",
+      "const": "0.1"
+    },
+    "id": {
+      "description": "Globally unique, idempotent identifier of this audit event. No identifier technology is mandated; UUIDv4, UUIDv7 or ULID are RECOMMENDED. Receivers MAY use this value to deduplicate redelivered events.",
+      "$ref": "#/$defs/identifier",
+      "examples": ["018f1b5c-6d2a-7c3e-9a1b-4f5e6d7c8b9a", "01JAV3M5S4K9QF7N2W8XG6ZTQD"]
+    },
+    "time": {
+      "description": "When the audited operation occurred, as observed by the producing application. UTC is RECOMMENDED.",
+      "$ref": "#/$defs/timestamp"
+    },
+    "observedTime": {
+      "description": "When a collector, exporter, gateway or receiving system observed this event. MUST NOT be assumed equal to `time`.",
+      "$ref": "#/$defs/timestamp"
+    },
+    "sequence": {
+      "description": "Producer-assigned monotonically increasing ordinal used to order events that share a timestamp. Ordering is only meaningful within a single producer, partition or integrity chain.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "event": { "$ref": "#/$defs/eventDescriptor" },
+    "actor": {
+      "description": "Principal that technically performed the operation.",
+      "$ref": "#/$defs/principal"
+    },
+    "subject": {
+      "description": "Principal on whose behalf the actor performed the operation. This is NOT the audited target; the audited target is `resource`.",
+      "$ref": "#/$defs/principal"
+    },
+    "delegation": { "$ref": "#/$defs/delegation" },
+    "resource": {
+      "description": "Primary resource the audited operation acted upon.",
+      "$ref": "#/$defs/resourceReference"
+    },
+    "relatedResources": {
+      "description": "Additional resources affected by, or required to interpret, the same operation.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/resourceReference" }
+    },
+    "application": { "$ref": "#/$defs/application" },
+    "organization": { "$ref": "#/$defs/organization" },
+    "authentication": { "$ref": "#/$defs/authentication" },
+    "authorization": { "$ref": "#/$defs/authorization" },
+    "approval": { "$ref": "#/$defs/approval" },
+    "request": { "$ref": "#/$defs/request" },
+    "change": { "$ref": "#/$defs/change" },
+    "reason": { "$ref": "#/$defs/reason" },
+    "evidence": {
+      "description": "References to material supporting this event. Evidence is referenced, never embedded.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/evidenceItem" }
+    },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "controlCategories": {
+      "description": "Regulation-neutral control categories this event contributes evidence to. Regulation, framework and jurisdiction identifiers MUST NOT appear here; they belong to external mapping artifacts.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/token" },
+      "examples": [
+        ["privileged-access", "change-approval"],
+        ["external-data-sharing", "data-access-logging"]
+      ]
+    },
+    "tags": {
+      "description": "Producer-defined labels for filtering and routing. Tags carry no normative meaning.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/tag" }
+    },
+    "metadata": {
+      "description": "Domain-specific audit interpretation data that has no core representation. Values SHOULD be small and structured. MUST NOT contain secrets, large payloads or duplicate copies of core fields.",
+      "$ref": "#/$defs/jsonObject"
+    },
+    "extensions": {
+      "description": "Vendor-specific or domain-specific additions. Every key MUST be a reverse-domain namespaced name of at least three dot-separated segments. Extensions MUST NOT weaken required core fields or redefine the meaning of core fields.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/extensionKey" },
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" },
+      "examples": [{ "com.example.identity.directory.id": "directory-1" }]
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "Delegation types that act for another principal require that principal to be identified. `service-chain` describes transport-level chaining and does not by itself imply a subject.",
+      "if": {
+        "type": "object",
+        "required": ["delegation"],
+        "properties": {
+          "delegation": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "enum": ["impersonation", "on-behalf-of", "delegated"] }
+            }
+          }
+        }
+      },
+      "then": { "required": ["subject"] }
+    }
+  ],
+  "$defs": {
+    "jsonValue": {
+      "title": "JSON value",
+      "description": "Any JSON value: string, number, integer, boolean, null, array or object.",
+      "anyOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "jsonObject": {
+      "title": "JSON object",
+      "description": "A JSON object whose values may be any JSON value.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/jsonValue" }
+    },
+    "identifier": {
+      "title": "Identifier",
+      "description": "Opaque, stable identifier. Leading and trailing whitespace are not permitted and the value MUST NOT be empty.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^\\S(.*\\S)?$"
+    },
+    "shortIdentifier": {
+      "title": "Short identifier",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^\\S(.*\\S)?$"
+    },
+    "token": {
+      "title": "Vocabulary token",
+      "description": "Lower-case, hyphen-separated vocabulary term. Used for open vocabularies whose recommended values are listed in the semantic conventions.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "tag": {
+      "title": "Tag",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9._:-]*$"
+    },
+    "eventName": {
+      "title": "Event name",
+      "description": "Hierarchical lower-case event name in the form domain.resource.action. At least two segments are REQUIRED. Segments may contain hyphenated words such as `offset-reset`. Event names MUST NOT contain product, company or jurisdiction names.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 256,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*(\\.[a-z][a-z0-9]*(-[a-z0-9]+)*)+$",
+      "examples": [
+        "authentication.login",
+        "identity.role.assign",
+        "document.share.create",
+        "configuration.setting.update",
+        "queue.consumer.offset-reset"
+      ]
+    },
+    "extensionKey": {
+      "title": "Extension key",
+      "description": "Reverse-domain namespaced extension key with at least three dot-separated lower-case segments, for example `com.example.workflow.stage`.",
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 256,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*(\\.[a-z][a-z0-9]*(-[a-z0-9]+)*){2,}$"
+    },
+    "timestamp": {
+      "title": "Timestamp",
+      "description": "RFC 3339 compatible date-time string. UTC is RECOMMENDED.",
+      "type": "string",
+      "format": "date-time",
+      "minLength": 20,
+      "maxLength": 64,
+      "examples": ["2026-03-14T09:24:31.412Z"]
+    },
+    "text": {
+      "title": "Human readable text",
+      "description": "Short human readable text. MUST NOT contain secrets, credentials, tokens or unnecessary personal data.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "algorithmIdentifier": {
+      "title": "Algorithm identifier",
+      "description": "Cryptographic algorithm identifier. The vocabulary is intentionally open so that new algorithms may be adopted without a specification change.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9+._-]*$"
+    },
+    "digest": {
+      "title": "Digest",
+      "description": "Encoded hash or signature value produced by another system or layer, such as an evidence digest or a signature. Hexadecimal, base64 and base64url encodings are accepted, because the value is often echoed from the system that produced it. Digests that OpenAuditModel itself verifies use `hexDigest` instead.",
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 1024,
+      "pattern": "^[A-Za-z0-9+/=_-]+$"
+    },
+    "hexDigest": {
+      "title": "Verifiable digest",
+      "description": "Digest that OpenAuditModel tooling recalculates and compares, encoded as lower-case hexadecimal with an even number of digits. A single encoding is mandated because a digest that could be hexadecimal or base64 cannot be compared without guessing. See specification/integrity.md §5.",
+      "type": "string",
+      "minLength": 32,
+      "maxLength": 256,
+      "pattern": "^([0-9a-f]{2}){16,128}$"
+    },
+    "traceId": {
+      "title": "Trace identifier",
+      "description": "W3C Trace Context trace-id: 32 lower-case hexadecimal characters. The all-zero value is invalid.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "not": { "const": "00000000000000000000000000000000" }
+    },
+    "spanId": {
+      "title": "Span identifier",
+      "description": "W3C Trace Context parent-id: 16 lower-case hexadecimal characters. The all-zero value is invalid.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "not": { "const": "0000000000000000" }
+    },
+
+    "eventDescriptor": {
+      "title": "Event descriptor",
+      "description": "What happened and how it ended.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "category", "outcome"],
+      "properties": {
+        "name": { "$ref": "#/$defs/eventName" },
+        "category": {
+          "description": "Coarse grouping of the event name. Open vocabulary; recommended values are listed in semantic-conventions/event-naming.md.",
+          "$ref": "#/$defs/token",
+          "examples": ["authentication", "identity", "data-access", "configuration", "workflow"]
+        },
+        "type": {
+          "description": "Optional activity classifier that is independent of the domain, such as the coarse operation performed.",
+          "$ref": "#/$defs/token",
+          "examples": ["create", "read", "update", "delete", "execute", "approve", "share"]
+        },
+        "outcome": {
+          "description": "Result of the audited operation. `partial` describes an operation that succeeded for some targets and failed for others.",
+          "enum": ["success", "failure", "partial", "unknown"]
+        },
+        "severity": {
+          "description": "Audit significance of the event, not the severity of a software fault.",
+          "enum": ["debug", "info", "low", "medium", "high", "critical"]
+        },
+        "summary": {
+          "description": "Short human readable description. Machine consumers MUST NOT parse this field.",
+          "$ref": "#/$defs/text"
+        },
+        "error": { "$ref": "#/$defs/errorDescriptor" }
+      },
+      "allOf": [
+        {
+          "$comment": "A failed operation carries a sanitized error descriptor so that failures remain analyzable without free-text parsing.",
+          "if": {
+            "type": "object",
+            "required": ["outcome"],
+            "properties": { "outcome": { "const": "failure" } }
+          },
+          "then": { "required": ["error"] }
+        }
+      ]
+    },
+
+    "errorDescriptor": {
+      "title": "Error descriptor",
+      "description": "Sanitized description of why an operation failed. MUST NOT contain secrets, tokens, credentials, personal data, full payloads, or internal stack traces unless explicitly permitted by policy.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "description": "Stable, machine-readable failure code defined by the producing application.",
+          "$ref": "#/$defs/shortIdentifier",
+          "examples": ["invalid-credentials", "permission-denied", "quota-exceeded"]
+        },
+        "type": {
+          "description": "Coarse failure classification.",
+          "$ref": "#/$defs/token",
+          "examples": ["validation", "authorization", "conflict", "timeout", "dependency"]
+        },
+        "message": {
+          "description": "Sanitized human readable failure message.",
+          "$ref": "#/$defs/text"
+        },
+        "retryable": {
+          "description": "Whether the same operation may reasonably succeed if retried.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "principal": {
+      "title": "Principal",
+      "description": "An actor or a subject. Stable identifiers are sufficient; personally identifiable display names are never required.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "description": "Kind of principal. A principal that does not fit a core type SHOULD use the closest core type and describe the detail in `attributes`.",
+          "enum": ["user", "service", "system", "admin", "external", "unknown"]
+        },
+        "id": {
+          "description": "Stable identifier of the principal within its issuing authority. SHOULD NOT be an email address or another direct personal identifier when a stable opaque identifier exists.",
+          "$ref": "#/$defs/identifier"
+        },
+        "displayName": {
+          "description": "OPTIONAL human readable name. Personal data; include only when required by the audit purpose.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "tenantId": {
+          "description": "Tenant the principal belongs to, when the application is multi-tenant.",
+          "$ref": "#/$defs/identifier"
+        },
+        "organizationId": {
+          "description": "Organization the principal belongs to.",
+          "$ref": "#/$defs/identifier"
+        },
+        "roles": {
+          "description": "Roles held by the principal that are relevant to this operation. This is not a complete role inventory.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/shortIdentifier" }
+        },
+        "attributes": {
+          "description": "Additional producer-defined principal attributes. MUST NOT contain credentials or unnecessary personal data.",
+          "$ref": "#/$defs/jsonObject"
+        }
+      }
+    },
+
+    "delegation": {
+      "title": "Delegation",
+      "description": "How authority to perform the operation was transferred from the subject to the actor.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "description": "`impersonation`: the actor assumed the subject's identity. `on-behalf-of`: the actor acted for the subject with its own identity. `delegated`: authority was granted in advance. `service-chain`: the operation traversed intermediate services.",
+          "enum": ["impersonation", "on-behalf-of", "delegated", "service-chain"]
+        },
+        "reason": {
+          "description": "Why delegation was used.",
+          "$ref": "#/$defs/text"
+        },
+        "reference": {
+          "description": "Identifier of the grant, ticket or session that authorized the delegation.",
+          "$ref": "#/$defs/identifier"
+        },
+        "approvedBy": {
+          "description": "Principal that approved the delegation, when delegation required approval.",
+          "$ref": "#/$defs/principal"
+        }
+      }
+    },
+
+    "resourceReference": {
+      "title": "Resource",
+      "description": "A resource the operation acted upon. Resource types are an open vocabulary and MUST NOT be enumerated in the core schema.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "description": "Kind of resource. Open vocabulary.",
+          "$ref": "#/$defs/token",
+          "examples": ["user", "role", "document", "incident", "configuration", "consumer-group"]
+        },
+        "id": {
+          "description": "Stable identifier of the resource within the producing application.",
+          "$ref": "#/$defs/identifier"
+        },
+        "name": {
+          "description": "OPTIONAL human readable resource name. May itself be sensitive.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "parentId": {
+          "description": "Identifier of the containing resource, such as a folder, project or cluster.",
+          "$ref": "#/$defs/identifier"
+        },
+        "classification": {
+          "description": "Data classification of the resource. Open vocabulary because classification schemes are organization-defined. Recommended values: public, internal, confidential, restricted, secret, unknown.",
+          "$ref": "#/$defs/token"
+        },
+        "ownerId": {
+          "description": "Identifier of the owning principal or team.",
+          "$ref": "#/$defs/identifier"
+        },
+        "tenantId": {
+          "description": "Tenant the resource belongs to.",
+          "$ref": "#/$defs/identifier"
+        },
+        "attributes": {
+          "description": "Additional producer-defined resource attributes. MUST NOT contain resource contents.",
+          "$ref": "#/$defs/jsonObject"
+        }
+      }
+    },
+
+    "application": {
+      "title": "Application context",
+      "description": "The application that produced the event. This MUST describe the producer, not a collector, forwarder or storage backend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "environment"],
+      "properties": {
+        "name": {
+          "description": "Stable name of the producing application. Lower-case hyphenated names are RECOMMENDED.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "environment": {
+          "description": "Deployment environment. Open vocabulary. Recommended values: local, development, test, staging, production, disaster-recovery, unknown.",
+          "$ref": "#/$defs/token"
+        },
+        "version": {
+          "description": "Version of the producing application.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "instance": {
+          "description": "Identifier of the specific running instance, such as a pod, host or process.",
+          "$ref": "#/$defs/identifier"
+        },
+        "service": {
+          "description": "Service within the application that produced the event.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "component": {
+          "description": "Component or module within the service.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "region": {
+          "description": "Deployment region identifier as defined by the operator.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "zone": {
+          "description": "Deployment zone identifier as defined by the operator.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "deploymentId": {
+          "description": "Identifier of the deployment or release the instance is running.",
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+
+    "organization": {
+      "title": "Organization context",
+      "description": "OPTIONAL organizational placement of the operation. Not every application is multi-tenant, so this object is never required.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "tenantId": { "$ref": "#/$defs/identifier" },
+        "organizationId": { "$ref": "#/$defs/identifier" },
+        "departmentId": { "$ref": "#/$defs/identifier" },
+        "workspaceId": { "$ref": "#/$defs/identifier" },
+        "businessUnitId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+
+    "authentication": {
+      "title": "Authentication context",
+      "description": "How the actor was authenticated. Absence of this object means authentication context is not available or not applicable; it does NOT mean the actor was anonymous.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "method": {
+          "description": "Authentication method used.",
+          "enum": [
+            "password",
+            "mfa",
+            "oidc",
+            "saml",
+            "certificate",
+            "api-key",
+            "service-account",
+            "session",
+            "anonymous",
+            "other",
+            "unknown"
+          ]
+        },
+        "provider": {
+          "description": "Identity provider that performed authentication.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "mfa": {
+          "description": "Whether multi-factor authentication was satisfied for the session behind this operation.",
+          "type": "boolean"
+        },
+        "assuranceLevel": {
+          "description": "Producer-defined authentication assurance level. Values are application-defined; mapping to an external assurance framework is out of scope for the core specification.",
+          "$ref": "#/$defs/token"
+        },
+        "sessionId": {
+          "description": "Session correlation identifier. MUST NOT be a usable session token or cookie value.",
+          "$ref": "#/$defs/identifier"
+        },
+        "authenticatedAt": {
+          "description": "When the session behind this operation was authenticated.",
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+
+    "authorization": {
+      "title": "Authorization context",
+      "description": "The authorization decision that permitted or denied the operation. OpenAuditModel records decisions; it is not an authorization engine.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": {
+        "decision": {
+          "description": "Outcome of the authorization evaluation.",
+          "enum": ["allow", "deny", "not-applicable", "unknown"]
+        },
+        "engine": {
+          "description": "Component that produced the decision. No specific engine is required or implied.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "policy": {
+          "description": "Identifier of the policy that produced the decision.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "policyVersion": {
+          "description": "Version of the policy that produced the decision.",
+          "$ref": "#/$defs/shortIdentifier"
+        },
+        "reason": {
+          "description": "Sanitized explanation of the decision.",
+          "$ref": "#/$defs/text"
+        },
+        "permissions": {
+          "description": "Permissions that were evaluated or required for the operation.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/shortIdentifier" }
+        }
+      }
+    },
+
+    "approval": {
+      "title": "Approval context",
+      "description": "Human or workflow approval associated with the operation. Approval is distinct from authorization: authorization is a policy evaluation, approval is a decision by one or more principals.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "status": {
+          "description": "State of the approval at the time of the event.",
+          "enum": ["not-required", "pending", "approved", "rejected", "expired", "unknown"]
+        },
+        "workflowId": {
+          "description": "Identifier of the approval workflow definition or instance.",
+          "$ref": "#/$defs/identifier"
+        },
+        "requestId": {
+          "description": "Identifier of the approval request.",
+          "$ref": "#/$defs/identifier"
+        },
+        "requiredApprovals": {
+          "description": "Number of approvals required by policy.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "receivedApprovals": {
+          "description": "Number of approvals received at the time of the event.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "approvers": {
+          "description": "Principals that approved the operation.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/principal" }
+        },
+        "approvedAt": {
+          "description": "When the approval reached its current status.",
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+
+    "request": {
+      "title": "Request and correlation context",
+      "description": "How the operation was requested and how it correlates with other telemetry.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "requestId": {
+          "description": "Identifier of the request that triggered the operation.",
+          "$ref": "#/$defs/identifier"
+        },
+        "correlationId": {
+          "description": "Identifier correlating a set of related requests or operations.",
+          "$ref": "#/$defs/identifier"
+        },
+        "traceId": { "$ref": "#/$defs/traceId" },
+        "spanId": { "$ref": "#/$defs/spanId" },
+        "ipAddress": {
+          "description": "Network address the request originated from. Personal data in most jurisdictions; record only when the audit purpose requires it.",
+          "type": "string",
+          "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+        },
+        "forwardedFor": {
+          "description": "Ordered list of proxy-reported client addresses. Structured deliberately so that raw forwarding headers are not copied verbatim.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "string",
+            "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+          }
+        },
+        "userAgent": {
+          "description": "Client user agent string, truncated by the producer when necessary.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "protocol": {
+          "description": "Application protocol used for the request. Open vocabulary.",
+          "$ref": "#/$defs/token",
+          "examples": ["http", "https", "grpc", "amqp", "mqtt", "ssh"]
+        },
+        "method": {
+          "description": "Protocol-level operation, such as an HTTP method or an RPC verb.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "route": {
+          "description": "Route template rather than a resolved URL. Query strings and fragments are rejected so that identifiers and search terms are not captured incidentally.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[^\\s?#]+$",
+          "examples": ["/users/{userId}/roles"]
+        }
+      }
+    },
+
+    "change": {
+      "title": "Change context",
+      "description": "What the operation changed. Complete before and after states are never required: changed fields, sanitized state, hashes or references are all acceptable.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "type": {
+          "description": "Kind of change performed.",
+          "enum": ["create", "update", "delete", "restore", "move", "execute", "none", "other"]
+        },
+        "changedFields": {
+          "description": "Paths of the fields that changed. Field paths alone are often sufficient and avoid recording values.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/shortIdentifier" }
+        },
+        "before": {
+          "description": "Sanitized prior state or the subset of it that changed. MUST NOT contain full database records, credentials or sensitive payloads.",
+          "$ref": "#/$defs/jsonValue"
+        },
+        "after": {
+          "description": "Sanitized resulting state or the subset of it that changed. MUST NOT contain full database records, credentials or sensitive payloads.",
+          "$ref": "#/$defs/jsonValue"
+        },
+        "beforeHash": {
+          "description": "Digest of the prior state, for verification without disclosure.",
+          "$ref": "#/$defs/digest"
+        },
+        "afterHash": {
+          "description": "Digest of the resulting state, for verification without disclosure.",
+          "$ref": "#/$defs/digest"
+        },
+        "ticketId": {
+          "description": "Change or service ticket associated with the change.",
+          "$ref": "#/$defs/identifier"
+        },
+        "incidentId": {
+          "description": "Incident associated with the change.",
+          "$ref": "#/$defs/identifier"
+        },
+        "deploymentId": {
+          "description": "Deployment or release associated with the change.",
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+
+    "reason": {
+      "title": "Reason",
+      "description": "Why the operation was performed. This is a business justification and MUST NOT be confused with a technical error message.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "code": {
+          "description": "Machine-readable justification code from a producer-defined vocabulary.",
+          "$ref": "#/$defs/token",
+          "examples": ["customer-support-request", "emergency-access", "scheduled-maintenance"]
+        },
+        "text": {
+          "description": "Human readable justification.",
+          "$ref": "#/$defs/text"
+        },
+        "reference": {
+          "description": "Identifier or locator of the record that justifies the operation, such as a ticket or case.",
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+
+    "evidenceItem": {
+      "title": "Evidence reference",
+      "description": "A reference to supporting material. OpenAuditModel does not define evidence storage. References MUST be access-controlled and MUST NOT embed credentials.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reference"],
+      "properties": {
+        "type": {
+          "description": "Kind of evidence being referenced.",
+          "enum": [
+            "document",
+            "log",
+            "metric",
+            "trace",
+            "screenshot",
+            "ticket",
+            "approval",
+            "signature",
+            "external-record",
+            "other"
+          ]
+        },
+        "reference": {
+          "description": "Locator or identifier of the evidence in its own system. MUST NOT contain credentials, tokens or signed access parameters.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^\\S(.*\\S)?$"
+        },
+        "hash": {
+          "description": "Digest of the referenced evidence, allowing later verification that it was not altered.",
+          "$ref": "#/$defs/digest"
+        },
+        "contentType": {
+          "description": "Media type of the referenced evidence.",
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-z]+/[a-zA-Z0-9!#$&^_.+-]+$"
+        },
+        "createdAt": {
+          "description": "When the evidence was created.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "retentionUntil": {
+          "description": "When the evidence may be disposed of, according to the owning system.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "legalHold": {
+          "description": "Whether the evidence is currently under a hold that suspends disposal.",
+          "type": "boolean"
+        }
+      }
+    },
+
+    "privacy": {
+      "title": "Privacy context",
+      "description": "How this event relates to personal data. Regulation-specific fields MUST NOT be added here; regulatory interpretation belongs to external mapping artifacts.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "containsPersonalData": {
+          "description": "Whether the event as serialized contains personal data.",
+          "type": "boolean"
+        },
+        "dataCategories": {
+          "description": "Categories of personal data present. Open vocabulary; recommended values are listed in specification/privacy.md.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/token" },
+          "examples": [["identifier", "contact"]]
+        },
+        "processing": {
+          "description": "How personal data was handled when the event was produced.",
+          "enum": ["include", "mask", "hash", "drop", "encrypt", "reference"]
+        },
+        "minimized": {
+          "description": "Whether the producer applied data minimization to this event.",
+          "type": "boolean"
+        },
+        "retentionClass": {
+          "description": "Producer-defined retention class governing this event.",
+          "$ref": "#/$defs/token"
+        },
+        "purpose": {
+          "description": "Purpose for which the event is recorded.",
+          "$ref": "#/$defs/token",
+          "examples": ["security-audit", "operational-audit", "access-transparency"]
+        }
+      }
+    },
+
+    "integrity": {
+      "title": "Integrity context",
+      "description": "Tamper-evidence material for this event. Integrity metadata makes alteration detectable; it does not make events immutable, prevent deletion, or replace write-once storage.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "dependentRequired": {
+        "hash": ["hashAlgorithm", "canonicalization"],
+        "previousHash": ["hashAlgorithm"]
+      },
+      "properties": {
+        "canonicalization": {
+          "description": "Canonicalization applied before hashing. `RFC8785`, the JSON Canonicalization Scheme, is the identifier the OpenAuditModel verifier implements. REQUIRED when `hash` is present: a digest whose canonicalization is unknown cannot be recalculated.",
+          "$ref": "#/$defs/algorithmIdentifier",
+          "examples": ["RFC8785"]
+        },
+        "hashAlgorithm": {
+          "description": "Algorithm used to produce `hash` and `previousHash`. Open vocabulary, matched case-sensitively; the v0.1 verifier implements SHA-256, SHA-384 and SHA-512. Acceptance by this schema is not a claim of verifier support.",
+          "$ref": "#/$defs/algorithmIdentifier",
+          "examples": ["SHA-256", "SHA-384", "SHA-512"]
+        },
+        "hash": {
+          "description": "Digest of the canonicalized event, calculated over the event with `/integrity/hash` and `/integrity/signature` removed. See specification/integrity.md §4.",
+          "$ref": "#/$defs/hexDigest"
+        },
+        "previousHash": {
+          "description": "Digest of the preceding event in the same chain, forming a tamper-evident sequence. Every event in one chain MUST use the same `hashAlgorithm` and `canonicalization`.",
+          "$ref": "#/$defs/hexDigest"
+        },
+        "chainId": {
+          "description": "Identifier of the chain this event belongs to. Chains may be per instance, per partition or per batch; a single global chain is NOT required.",
+          "$ref": "#/$defs/identifier"
+        },
+        "batchId": {
+          "description": "Identifier of the batch this event was sealed with.",
+          "$ref": "#/$defs/identifier"
+        },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+
+    "signature": {
+      "title": "Signature",
+      "description": "Digital signature over the canonicalized event. A signature does not by itself create legal evidentiary status, and key management is outside the core specification.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": {
+          "description": "Signature algorithm. Open vocabulary; recommended values include Ed25519, ECDSA-P256-SHA256 and RSA-PSS-SHA256.",
+          "$ref": "#/$defs/algorithmIdentifier"
+        },
+        "value": {
+          "description": "Encoded signature value.",
+          "$ref": "#/$defs/digest"
+        },
+        "keyId": {
+          "description": "Identifier of the verification key. MUST NOT contain key material.",
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    }
+  }
+}

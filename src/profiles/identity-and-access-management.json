@@ -1,0 +1,120 @@
+{
+  "profileVersion": "0.1",
+  "name": "identity-and-access-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Identity and Access Management Profile",
+  "description": "Additional conformance requirements for identity and access management audit events. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it.",
+  "rules": [
+    {
+      "id": "IAM-CORE-001",
+      "description": "Every identity operation records the authorization decision that permitted it.",
+      "rationale": "An access change without a recorded decision cannot be reviewed: nothing distinguishes a change a policy allowed from one that bypassed policy entirely.",
+      "severity": "error",
+      "eventPrefixes": ["identity."],
+      "requiredPaths": ["/authorization"]
+    },
+    {
+      "id": "IAM-CORE-002",
+      "description": "Every identity operation records why it was performed and how it correlates with the request that caused it.",
+      "rationale": "Access changes are reviewed long after the fact, by someone who cannot ask the actor what they were doing.",
+      "severity": "error",
+      "eventPrefixes": ["identity."],
+      "recommendedPaths": ["/reason", "/request/correlationId"]
+    },
+    {
+      "id": "IAM-ROLE-001",
+      "description": "Role assignment and revocation identify the role and whether it is privileged, and record a justification.",
+      "rationale": "The privileged flag is what makes a later reviewer able to separate routine access changes from the ones that matter, without knowing the operator's role catalogue.",
+      "severity": "error",
+      "events": ["identity.role.assign", "identity.role.revoke"],
+      "requiredPaths": ["/authorization", "/reason"],
+      "requiredMetadata": [
+        { "path": "/role/id", "type": "string" },
+        { "path": "/role/privileged", "type": "boolean" }
+      ],
+      "recommendedPaths": ["/approval", "/request/correlationId"]
+    },
+    {
+      "id": "IAM-ROLE-002",
+      "description": "A privileged role change is approved and performed from a multi-factor authenticated session.",
+      "rationale": "Privileged access is the control that protects every other control; granting it on the strength of a single factor and one person's judgement is the failure this rule exists to make visible.",
+      "severity": "error",
+      "events": ["identity.role.assign", "identity.role.revoke"],
+      "when": { "path": "/metadata/role/privileged", "equals": true },
+      "requiredPaths": ["/approval", "/authentication"],
+      "requiredValues": [{ "path": "/authentication/mfa", "equals": true }]
+    },
+    {
+      "id": "IAM-PERM-001",
+      "description": "Permission grants and revocations identify the permission, its scope and whether it is privileged.",
+      "rationale": "A permission without a scope cannot be assessed: the same permission over one record and over an entire tenant are different operations.",
+      "severity": "error",
+      "eventPrefixes": ["identity.permission."],
+      "requiredPaths": ["/authorization", "/reason"],
+      "requiredMetadata": [
+        { "path": "/permission/id", "type": "string" },
+        { "path": "/permission/scope", "type": "string" },
+        { "path": "/permission/privileged", "type": "boolean" }
+      ],
+      "recommendedPaths": ["/approval", "/request/correlationId"]
+    },
+    {
+      "id": "IAM-PERM-002",
+      "description": "A privileged permission change is approved and performed from a multi-factor authenticated session.",
+      "rationale": "Direct permission grants bypass the role model, so they warrant the same scrutiny as a privileged role change.",
+      "severity": "error",
+      "eventPrefixes": ["identity.permission."],
+      "when": { "path": "/metadata/permission/privileged", "equals": true },
+      "requiredPaths": ["/approval", "/authentication"],
+      "requiredValues": [{ "path": "/authentication/mfa", "equals": true }]
+    },
+    {
+      "id": "IAM-USER-001",
+      "description": "User lifecycle events record the kind of principal the account represents.",
+      "rationale": "Distinguishing an employee account from a contractor, partner or test account is what makes an access review answerable. It requires no personal data.",
+      "severity": "error",
+      "events": ["identity.user.create", "identity.user.disable", "identity.user.delete"],
+      "requiredMetadata": [{ "path": "/user/type", "type": "string" }]
+    },
+    {
+      "id": "IAM-USER-002",
+      "description": "Disabling or deleting an account records why.",
+      "rationale": "Account removal is indistinguishable from account suppression without a stated reason, and the two have very different implications.",
+      "severity": "error",
+      "events": ["identity.user.disable", "identity.user.delete"],
+      "requiredPaths": ["/reason"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "IAM-SVC-001",
+      "description": "Service account lifecycle events record the account's purpose and a human owner.",
+      "rationale": "Unowned service accounts outlive the systems that needed them. Recording an owner at creation is the only point at which the answer is known.",
+      "severity": "error",
+      "events": ["identity.service-account.create", "identity.service-account.disable"],
+      "requiredMetadata": [
+        { "path": "/serviceAccount/purpose", "type": "string" },
+        { "path": "/serviceAccount/ownerId", "type": "string" }
+      ]
+    },
+    {
+      "id": "IAM-SVC-002",
+      "description": "Service account creation records when the account is expected to expire.",
+      "rationale": "A recorded expiry turns an indefinite credential into a reviewable one. It is recommended rather than required because not every service account can be time-bound.",
+      "severity": "error",
+      "events": ["identity.service-account.create"],
+      "recommendedPaths": ["/metadata/serviceAccount/expiresAt"]
+    },
+    {
+      "id": "IAM-CRED-001",
+      "description": "Credential rotation records the authorization, the justification and the kind of credential rotated.",
+      "rationale": "The kind of credential determines the blast radius of the rotation. The credential itself must never appear in the event; see the profile documentation.",
+      "severity": "error",
+      "events": ["identity.credential.rotate"],
+      "requiredPaths": ["/authorization", "/reason"],
+      "requiredMetadata": [{ "path": "/credential/type", "type": "string" }],
+      "recommendedPaths": ["/request/correlationId"]
+    }
+  ]
+}

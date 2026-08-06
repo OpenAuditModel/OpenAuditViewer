@@ -1,0 +1,237 @@
+{
+  "profileVersion": "0.1",
+  "name": "customer-and-account-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Customer and Account Management Profile",
+  "description": "Additional conformance requirements for material customer and business-account lifecycle audit events: customer record creation, update, merge, restriction, closure and deletion, and account opening, update, status transition, limit change, freeze, restriction and closure. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. This profile governs business parties and business accounts; identities, authentication and access rights are governed by the identity-and-access-management profile. High-volume read events such as customer.profile.view, customer.search and account.balance.view are deliberately not governed.",
+  "rules": [
+    {
+      "id": "CUSTOMER-CORE-001",
+      "description": "Every governed customer or account operation records the kind of party the record belongs to.",
+      "rationale": "Whether a record describes an individual consumer, a business, an intermediary, an internal test party or a partner is the single fact that decides how an operation on it should be reviewed, and it is not derivable from an opaque identifier. Carrying it on the event rather than expecting a join is deliberate: the customer record the join would need may since have been merged, restricted or deleted, and the operations this profile governs are exactly the ones that do that. The party type is a category, not personal data.",
+      "severity": "error",
+      "events": [
+        "customer.create",
+        "customer.update",
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "requiredMetadata": [{ "path": "/customer/customerType", "type": "string" }]
+    },
+    {
+      "id": "CUSTOMER-CORE-002",
+      "description": "A governed customer or account operation should record why it happened, how sensitive the record is, and how it correlates with the wider workflow it belongs to.",
+      "rationale": "Onboarding, periodic review and offboarding are multi-step workflows whose steps are emitted by different services, so a correlation identifier is what turns a scattering of events back into one case. These are recommended rather than required because a conforming producer may have no correlation mechanism at all, because a classification scheme is an organization's decision rather than this profile's, and because a missing justification on a routine update should prompt a question rather than fail a build. Where a justification is genuinely load-bearing, a separate rule requires it.",
+      "severity": "warning",
+      "events": [
+        "customer.create",
+        "customer.update",
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "recommendedPaths": ["/reason", "/request/correlationId", "/resource/classification"]
+    },
+    {
+      "id": "CUSTOMER-ACCOUNT-001",
+      "description": "An account operation records the kind of account and the customer the account belongs to.",
+      "rationale": "An account event that does not name its owning customer cannot be joined to the party it affects, so a reviewer asking which parties were frozen last quarter has to reconstruct ownership from a system whose current state may no longer match what was true at the time. The account kind matters for the same reason the party type does: freezing a dormant internal settlement account and freezing a customer's only operating account are different acts that otherwise look identical in the trail.",
+      "severity": "error",
+      "events": [
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "requiredPaths": ["/resource/ownerId"],
+      "requiredMetadata": [{ "path": "/customer/accountType", "type": "string" }]
+    },
+    {
+      "id": "CUSTOMER-CONTROL-001",
+      "description": "An operation that restricts, closes, restores, merges, deletes or re-limits a customer or an account records the authorization decision that permitted it and why it was performed.",
+      "rationale": "These are the operations that take a customer's ability to transact away or give it back, and they are the ones a complaint, a dispute or a supervisory question later turns on. Without a recorded decision nothing distinguishes an action policy allowed from one that bypassed policy; without a stated justification the trail cannot say whether a freeze was a fraud control, a billing dispute or a mistake, and the person who knew will not be reachable when the question is asked. Approval is recommended rather than required because many organizations legitimately let a single trained operator freeze an account on suspicion; a rule that forbade it would be switched off rather than met.",
+      "severity": "error",
+      "events": [
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "requiredPaths": ["/authorization", "/reason"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "CUSTOMER-UPDATE-001",
+      "description": "An update to a customer record or an account records what changed.",
+      "rationale": "An update event without a change context records only that something was altered, which is the least useful thing an audit trail can say about a mutation. The profile requires the change object and nothing about its shape: the core already accepts changed field names, sanitized state, hashes or references, and a customer record is exactly the kind of data where recording field names instead of values is the right answer.",
+      "severity": "error",
+      "events": ["customer.update", "account.update"],
+      "requiredPaths": ["/change"],
+      "recommendedPaths": ["/change/changedFields"]
+    },
+    {
+      "id": "CUSTOMER-STATE-001",
+      "description": "A status transition on a customer or an account records the resulting status and the transition itself.",
+      "rationale": "A closure, freeze, restriction or reinstatement is meaningful only as a move between two states. An event that names the action but not the resulting status forces every consumer to model the producer's state machine correctly in order to know where the record ended up, and consumers get that wrong. Recording the resulting status makes the trail replayable: the state after any transition can be read directly instead of inferred from the event name.",
+      "severity": "error",
+      "events": [
+        "customer.close",
+        "customer.restrict",
+        "customer.restore",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.status."],
+      "requiredPaths": ["/change"],
+      "requiredMetadata": [{ "path": "/customer/status", "type": "string" }]
+    },
+    {
+      "id": "CUSTOMER-RESTRICT-001",
+      "description": "A restriction or freeze records what the restriction actually prevents.",
+      "rationale": "Restriction is not one control. Blocking outgoing payments, blocking new orders, blocking sign-in and blocking the whole relationship have very different consequences for the customer, and they are routinely emitted under the same event name. Without the scope, nobody can later tell whether a restriction was proportionate, nor lift it safely, and a customer complaint about being cut off cannot be answered from the trail at all. The review that triggered the restriction is recommended rather than required, because a restriction may equally be an immediate operational decision with no review behind it.",
+      "severity": "error",
+      "events": ["customer.restrict", "account.restrict", "account.freeze"],
+      "requiredMetadata": [{ "path": "/customer/restrictionScope", "type": "string" }],
+      "recommendedPaths": ["/approval", "/metadata/customer/reviewId"]
+    },
+    {
+      "id": "CUSTOMER-LIMIT-001",
+      "description": "A limit change records which limit changed and both the prior and the resulting value.",
+      "rationale": "A limit change is only reviewable as a pair of numbers: raising a transfer ceiling from a small figure to a very large one and lowering it are the same event name with opposite risk. Recording only the new value hides the direction and the magnitude of the change. The profile requires which limit was touched because an account carries several, and it requires both states rather than a computed delta because the rule language compares nothing: the engine can check that both values were recorded and must leave the comparison, and any threshold, to the reviewer.",
+      "severity": "error",
+      "eventPrefixes": ["account.limit."],
+      "requiredPaths": ["/change/before", "/change/after"],
+      "requiredMetadata": [{ "path": "/customer/limitType", "type": "string" }]
+    },
+    {
+      "id": "CUSTOMER-MERGE-001",
+      "description": "A customer merge names the record that was retired and the records the merge related.",
+      "rationale": "A merge collapses two parties into one and is the hardest customer operation to undo or explain. Every identifier that pointed at the retired record becomes unresolvable at the moment of the merge, so an event that does not name that record breaks the trail of everything that referenced it, and the surviving record appears to acquire history from nowhere. Requiring the related resources as well keeps both sides of the merge on the event, so that a reviewer never has to guess which direction it ran.",
+      "severity": "error",
+      "events": ["customer.merge"],
+      "requiredPaths": ["/relatedResources"],
+      "requiredMetadata": [{ "path": "/customer/mergedFromId", "type": "string" }]
+    },
+    {
+      "id": "CUSTOMER-DELETE-001",
+      "description": "Deleting a customer record records how far the deletion reached.",
+      "rationale": "Deletion is the operation an audit trail is least able to reconstruct afterwards, because the evidence is precisely what was removed. Erasing a party's personal data while retaining the transactional record is a different act from removing the record entirely, and the two are habitually emitted under one name. Recording the scope is what lets a later reader answer what still exists, and it is the only honest way to distinguish an erasure that was performed from one that was claimed. The privacy context and an approval are recommended rather than required because neither is universal.",
+      "severity": "error",
+      "events": ["customer.delete"],
+      "requiredMetadata": [{ "path": "/customer/deletionScope", "type": "string" }],
+      "recommendedPaths": ["/approval", "/privacy"]
+    },
+    {
+      "id": "CUSTOMER-APPROVAL-001",
+      "description": "When the producer declares that an operation required approval, the state of that approval is recorded.",
+      "rationale": "This profile does not decide which customer or account operations need a second person, because that varies by organization, product and jurisdiction and no vendor-neutral answer exists. It enforces the consequence of the producer's own declaration instead: an operation the system itself said required approval, carried out with no approval state on the event, is either an unapproved change or an unrecorded one, and the trail cannot tell which. The rule requires the status rather than the approval object so that the finding points at the fact that is missing rather than at its container.",
+      "severity": "error",
+      "events": [
+        "customer.create",
+        "customer.update",
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "when": { "path": "/metadata/customer/approvalRequired", "equals": true },
+      "requiredPaths": ["/approval/status"]
+    },
+    {
+      "id": "CUSTOMER-SUBJECT-001",
+      "description": "An operation the producer declares was carried out on behalf of another party names that party.",
+      "rationale": "Customer and account operations are frequently performed by an agent, a branch operator or a support engineer for someone else, and in that case the actor is not the party the operation was about. The core already requires a subject when a delegation object is present, but a great many systems record acting-for relationships without modelling delegation at all, and then the trail attributes a closure to the operator who typed it. This rule fires only on the producer's own declaration, so the profile does not have to decide what acting on behalf of means in a given deployment.",
+      "severity": "error",
+      "events": [
+        "customer.create",
+        "customer.update",
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "when": { "path": "/metadata/customer/onBehalfOf", "equals": true },
+      "requiredPaths": ["/subject"]
+    },
+    {
+      "id": "CUSTOMER-OVERRIDE-001",
+      "description": "An operation the producer declares was a manual override records the authorization decision it was recorded against and why the override was made.",
+      "rationale": "A manual override is a person setting aside what the system would otherwise have done, and it is the single most reviewable act in customer administration: overrides are where fraud, favouritism and honest emergency handling all look alike. Without a justification the trail cannot separate them, and without the recorded decision it cannot even show what was overridden. The rule extends this to ordinary updates and openings, which no other rule in this profile requires a justification for, because an overridden routine change is not a routine change.",
+      "severity": "error",
+      "events": [
+        "customer.create",
+        "customer.update",
+        "customer.merge",
+        "customer.close",
+        "customer.delete",
+        "customer.restrict",
+        "customer.restore",
+        "account.open",
+        "account.update",
+        "account.close",
+        "account.reopen",
+        "account.freeze",
+        "account.unfreeze",
+        "account.restrict"
+      ],
+      "eventPrefixes": ["account.limit.", "account.status."],
+      "when": { "path": "/metadata/customer/manualOverride", "equals": true },
+      "requiredPaths": ["/authorization", "/reason"]
+    }
+  ]
+}

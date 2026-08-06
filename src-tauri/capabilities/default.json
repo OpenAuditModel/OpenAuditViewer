@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window. fs permissions deliberately carry NO static path scope: the runtime scope is extended by the dialog plugin with exactly the folder the user picked (recursively) and the file the user chose to save — nothing else on disk is reachable from the webview.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "fs:allow-read-text-file",
+    "fs:allow-read-dir",
+    "fs:allow-write-text-file",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://openauditmodel.org" },
+        { "url": "https://openauditmodel.org/*" },
+        { "url": "https://github.com/*" }
+      ]
+    }
+  ]
+}

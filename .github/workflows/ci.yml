@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Type-check, test, format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Regenerating first proves the committed validator matches the vendored
+      # schema: if it does not, the diff check below fails rather than the app
+      # silently validating against a stale copy.
+      - name: Generate validator
+        run: npm run generate-validator
+
+      - name: Fail if the generated validator is stale
+        run: git diff --exit-code -- src/schema/validate.generated.js
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run format:check
+
+      - name: Build frontend
+        run: npx vite build
+
+      # The app ships a Content-Security-Policy without 'unsafe-eval'. Runtime
+      # code generation in the bundle would blank the window on launch, which
+      # no unit test would catch.
+      - name: Fail if the bundle contains runtime code generation
+        run: |
+          if grep -rE "new Function\(|[^a-zA-Z]eval\(" dist/assets/*.js; then
+            echo "::error::bundle contains runtime code generation, which the CSP forbids"
+            exit 1
+          fi
+
+  desktop:
+    name: Desktop build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: npm ci
+
+      - name: Build the desktop application
+        run: npm run tauri build
+
+      # Windows only, deliberately. The Linux job exists to prove the code
+      # still compiles there; keeping its ~80 MB AppImage for a platform the
+      # project does not publish, on every push, is storage spent on something
+      # nobody is meant to download. The portable executable lives outside
+      # `bundle/` because it is the compiled binary, not a packaged artifact.
+      - name: Upload build output
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: openaudit-viewer-${{ matrix.os }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/openaudit-viewer.exe
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.exe

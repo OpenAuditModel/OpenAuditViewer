@@ -1,0 +1,247 @@
+{
+  "profileVersion": "0.1",
+  "name": "financial-transaction-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Financial Transaction Management Profile",
+  "description": "Additional conformance requirements for audit events that record material financial operations: transfers, payments, withdrawals, deposits, refunds, reversals, payouts, settlements, chargebacks, reconciliation adjustments and transaction limit changes. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. Non-mutating financial reads such as balance enquiries, price quotes and routine reporting are deliberately not governed.",
+  "rules": [
+    {
+      "id": "FIN-CORE-001",
+      "description": "Every governed financial operation records the authorization decision that permitted it.",
+      "rationale": "Money movement is the operation an attacker and a mistaken operator both aim for, and after the fact the two look identical. Without a recorded decision nothing separates a transfer that policy permitted from one that bypassed policy entirely, and a reviewer is left inferring the control state of the system from the fact that the transaction completed. The profile records the decision; it does not evaluate it.",
+      "severity": "error",
+      "events": ["financial.limit.create", "financial.limit.delete", "financial.limit.update"],
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback.",
+        "financial.reconciliation."
+      ],
+      "requiredPaths": ["/authorization"]
+    },
+    {
+      "id": "FIN-CORE-002",
+      "description": "A governed financial operation should record why it happened, how the actor was authenticated, and the other financial resources the same operation touched.",
+      "rationale": "These are the three fields a financial reviewer reaches for first and a producer omits most often. They are recommended rather than required because each has a legitimate absence: a scheduled settlement has no per-event business justification, an internal batch process has no interactive authentication context, and a single-sided deposit has no counterparty resource to name. A missing one should prompt a question rather than fail a pipeline.",
+      "severity": "warning",
+      "events": ["financial.limit.create", "financial.limit.delete", "financial.limit.update"],
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback.",
+        "financial.reconciliation."
+      ],
+      "recommendedPaths": ["/reason", "/authentication", "/relatedResources"]
+    },
+    {
+      "id": "FIN-TXN-001",
+      "description": "A monetary movement records the transaction it belongs to, the identifier that correlates the whole transaction lifecycle, and the amount and currency that moved.",
+      "rationale": "A financial transaction is almost never one event. An authorization, a capture, a settlement, a refund and a reversal are separate operations against the same money, often minutes or months apart and often produced by different services. Without a transaction reference the events cannot be assembled into a transaction, and without a correlation identifier the transaction cannot be assembled into a case. Amount and currency are what make the trail answerable at all: an event that records that value moved without recording how much and in what unit cannot be reconciled against any ledger, and a bare number without its currency is not an amount.",
+      "severity": "error",
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback."
+      ],
+      "requiredPaths": ["/request/correlationId"],
+      "requiredMetadata": [
+        {
+          "path": "/financial/transactionId",
+          "type": "string"
+        },
+        {
+          "path": "/financial/amount",
+          "type": "number"
+        },
+        {
+          "path": "/financial/currency",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "FIN-TXN-002",
+      "description": "A monetary movement records which way value moved and the state the transaction was left in.",
+      "rationale": "The same amount against the same account is a credit or a debit, and the difference is the whole meaning of the event. Direction cannot be reconstructed from the event name because one deployment models a refund as an outbound payment and another as a negative capture. Business status is equally irreplaceable: `event.outcome` says whether the operation the application attempted succeeded, which is not the same question as whether the money has actually moved. A capture can succeed while the transaction remains pending settlement, and a reviewer who conflates the two will report money as final that a counterparty can still recall.",
+      "severity": "error",
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback."
+      ],
+      "requiredMetadata": [
+        {
+          "path": "/financial/direction",
+          "type": "string"
+        },
+        {
+          "path": "/financial/status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "FIN-LINK-001",
+      "description": "A transfer or a settlement names the other financial resources it moved value between.",
+      "rationale": "A transfer and a settlement are two-sided by definition. The core model gives one resource the primary position, so an event that stops there records exactly half the operation: the money left somewhere and the trail does not say where it went. `relatedResources` is the core field for this and needs no new vocabulary, and a counterparty outside the producer's control can still be named by an opaque reference. This is a strengthening of the general `FIN-CORE-002` recommendation for the two families where a single-sided record is not merely thin but wrong.",
+      "severity": "error",
+      "eventPrefixes": ["financial.transfer.", "financial.settlement."],
+      "requiredPaths": ["/relatedResources"]
+    },
+    {
+      "id": "FIN-REASON-001",
+      "description": "An operation that refuses, withdraws or unwinds value records why.",
+      "rationale": "A completed payment explains itself; a rejected, cancelled, refunded or reversed one does not. These are the operations where the customer disputes the outcome, where the loss is booked, and where the difference between a policy decision, an operational error and a deliberate write-off decides who is accountable. That difference exists only in the justification, and it is knowable only at the moment of the decision. A stated reason also separates a refund issued because goods were returned from one issued to move money to a chosen destination, which is the shape financial abuse takes when it is committed from inside.",
+      "severity": "error",
+      "events": [
+        "financial.payment.reject",
+        "financial.payment.cancel",
+        "financial.transfer.cancel",
+        "financial.payout.cancel",
+        "financial.settlement.cancel",
+        "financial.withdrawal.reject",
+        "financial.refund.create"
+      ],
+      "eventPrefixes": ["financial.reversal.", "financial.chargeback."],
+      "requiredPaths": ["/reason"]
+    },
+    {
+      "id": "FIN-REVERSAL-001",
+      "description": "A reversal or a chargeback names the transaction it acts against.",
+      "rationale": "A reversal has no independent existence: it is defined entirely by the movement it undoes, and an event that does not name that movement records value appearing from nowhere. Matching a reversal to its original by amount and timing is guesswork that fails precisely where it matters, on the accounts with many similar transactions. The same holds for a chargeback, which is raised by a counterparty against a specific earlier payment and whose whole review turns on which one.",
+      "severity": "error",
+      "eventPrefixes": ["financial.reversal.", "financial.chargeback."],
+      "requiredMetadata": [
+        {
+          "path": "/financial/originalTransactionId",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "FIN-APPROVAL-001",
+      "description": "When the producer declares that an operation required approval, the event records the approval decision.",
+      "rationale": "Approval thresholds are a local policy decision that this profile deliberately does not make. A marketplace pays out thousands of small balances an hour with no human involvement and is right to; a treasury team moves one amount a week under dual control and is right to. What the profile can require is consistency: once a producer has declared that this operation required approval, an event that does not carry the resulting decision has recorded the control as applying without recording whether it was satisfied, which is worse than not claiming the control at all. The status is required rather than the object alone because an approval record naming only a workflow does not say whether anyone approved anything.",
+      "severity": "error",
+      "events": ["financial.limit.create", "financial.limit.delete", "financial.limit.update"],
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback.",
+        "financial.reconciliation."
+      ],
+      "when": {
+        "path": "/metadata/financial/approvalRequired",
+        "equals": true
+      },
+      "requiredPaths": ["/approval/status"],
+      "recommendedPaths": ["/approval/workflowId", "/approval/approvers"]
+    },
+    {
+      "id": "FIN-MANUAL-001",
+      "description": "When the producer declares an operation to be a manual intervention, the event records what was altered and why.",
+      "rationale": "A manual intervention is an operator substituting their own judgement for the system's, and it is the single most sensitive class of financial event because it leaves no upstream business record to reconcile against. The automated path has an order, an instruction or a schedule behind it; the manual path has a person. Recording the change makes the intervention measurable against the state it replaced, and recording the justification is the only chance to capture the operator's intent, which no later reviewer can reconstruct. The flag is set by the producer because only the producer knows which of its code paths is the manual one.",
+      "severity": "error",
+      "events": ["financial.limit.create", "financial.limit.delete", "financial.limit.update"],
+      "eventPrefixes": [
+        "financial.transfer.",
+        "financial.payment.",
+        "financial.withdrawal.",
+        "financial.deposit.",
+        "financial.refund.",
+        "financial.reversal.",
+        "financial.payout.",
+        "financial.settlement.",
+        "financial.chargeback.",
+        "financial.reconciliation."
+      ],
+      "when": {
+        "path": "/metadata/financial/manual",
+        "equals": true
+      },
+      "requiredPaths": ["/reason", "/change"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "FIN-RECON-001",
+      "description": "A reconciliation event names the reconciliation it belongs to.",
+      "rationale": "Reconciliation is the control that proves the producer's own record of money agrees with somebody else's. Its events are only meaningful as a set: a start, a set of findings and a completion together state what was compared and what the comparison concluded. An event that does not name its run cannot be placed in that set, so the trail records that reconciliation happened without recording what any of it decided, and a break found in one period becomes indistinguishable from a break found in another.",
+      "severity": "error",
+      "eventPrefixes": ["financial.reconciliation."],
+      "requiredMetadata": [
+        {
+          "path": "/financial/reconciliationId",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/request/correlationId"]
+    },
+    {
+      "id": "FIN-RECON-002",
+      "description": "A reconciliation adjustment records the change it made to the books, the amount and currency involved, and why the correction was accepted.",
+      "rationale": "An adjustment is the one reconciliation operation that moves recorded value without a business transaction behind it: the books are altered to agree with an external record. That makes it the natural hiding place for a loss nobody wants to explain, and the natural place for a genuine correction to be mistaken for one. The before and after state, the size of the correction and the stated justification are what let a later reviewer tell those two apart, and none of them can be recovered once the balances have moved on.",
+      "severity": "error",
+      "events": ["financial.reconciliation.adjust"],
+      "requiredPaths": ["/change", "/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/financial/amount",
+          "type": "number"
+        },
+        {
+          "path": "/financial/currency",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "FIN-LIMIT-001",
+      "description": "A change to a transaction limit records the kind of limit, its before and after state, and why it was changed.",
+      "rationale": "A limit is a preventive control, so changing one changes what every future transaction is allowed to do. Raising a ceiling shortly before a large movement and lowering it afterwards is the classic shape of a limit abused rather than administered, and it is visible only when the transition itself is recorded: an event stating the resulting value alone cannot show how far the control moved or that it moved back. The kind of limit is required because a daily aggregate ceiling and a single-transaction ceiling are different controls that deployments name differently, and a reviewer cannot infer which one changed from a number. The rule selects the three mutating operations by name rather than the whole `financial.limit.` family, because a limit check runs on every transaction: governing `financial.limit.check` would put the profile's heaviest requirements on its highest-volume event, and the requirement would be switched off rather than met.",
+      "severity": "error",
+      "events": ["financial.limit.create", "financial.limit.update", "financial.limit.delete"],
+      "requiredPaths": ["/change", "/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/financial/limitType",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/approval"]
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "profileVersion": "0.1",
+  "name": "document-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Document Management Profile",
+  "description": "Additional conformance requirements for document management audit events: creation, deletion, download, versioning, sharing, access policy, retention and legal hold. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. High-volume read events such as document.file.view are deliberately not governed.",
+  "rules": [
+    {
+      "id": "DOC-CORE-001",
+      "description": "Every governed document operation records the authorization decision that permitted it and the classification of the document it acted on.",
+      "rationale": "A document operation without a recorded decision cannot be reviewed: nothing distinguishes an action policy allowed from one that bypassed policy. Without a classification, a reviewer cannot tell whether the operation touched public material or the most sensitive record the organization holds, and every triage decision downstream depends on that difference.",
+      "severity": "error",
+      "events": ["document.file.upload", "document.file.delete", "document.file.download"],
+      "eventPrefixes": [
+        "document.share.",
+        "document.permission.",
+        "document.version.",
+        "document.retention.",
+        "document.legal-hold."
+      ],
+      "requiredPaths": ["/authorization", "/resource/classification"]
+    },
+    {
+      "id": "DOC-CORE-002",
+      "description": "A governed document operation should record why it happened, where the document lives, and how it correlates with the wider operation.",
+      "rationale": "These are the fields a reviewer reaches for first and a producer omits most often. They are recommended rather than required because a conforming system may legitimately have no container hierarchy, and because a missing justification should prompt a question rather than fail a build.",
+      "severity": "warning",
+      "events": ["document.file.upload", "document.file.delete", "document.file.download"],
+      "eventPrefixes": [
+        "document.share.",
+        "document.permission.",
+        "document.version.",
+        "document.retention.",
+        "document.legal-hold."
+      ],
+      "recommendedPaths": ["/reason", "/resource/parentId", "/request/correlationId"]
+    },
+    {
+      "id": "DOC-SHARE-001",
+      "description": "A share event records the kind of recipient the access was granted to or withdrawn from.",
+      "rationale": "Whether a document went to a colleague, a partner or an anonymous link is the single fact that determines the risk of the operation, and it cannot be reconstructed later from an identifier alone.",
+      "severity": "error",
+      "eventPrefixes": ["document.share."],
+      "requiredMetadata": [
+        {
+          "path": "/share/recipientType",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DOC-SHARE-002",
+      "description": "Creating a share records the permission granted, and should record when the access ends.",
+      "rationale": "A share that does not say what the recipient may do records that something was shared without recording what was given away. An expiry is recommended here and required for external recipients, because indefinite internal access is often a deliberate and reasonable choice.",
+      "severity": "error",
+      "events": ["document.share.create"],
+      "requiredMetadata": [
+        {
+          "path": "/share/permission",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/share/expiresAt"]
+    },
+    {
+      "id": "DOC-SHARE-003",
+      "description": "A share to an external recipient is time-bounded and justified.",
+      "rationale": "An external share is a disclosure outside the organization's control. Without an expiry it is indefinite, and without a stated reason there is no record of who decided the disclosure was acceptable. This rule fires only when the producer has declared the recipient external, so the profile does not have to guess what external means for a given deployment.",
+      "severity": "error",
+      "events": ["document.share.create"],
+      "when": {
+        "path": "/metadata/share/recipientType",
+        "equals": "external"
+      },
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/share/expiresAt",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DOC-PERM-001",
+      "description": "A document permission change names the principal whose access changed and the permission involved.",
+      "rationale": "An access-policy change that does not say whose access changed is not reviewable at all. The principal is recorded in namespaced metadata rather than in `/subject`, because [actor-model.md](../../specification/actor-model.md) §5 defines `subject` as the principal *on whose behalf* the actor acted, and forbids its use as a generic target. A grantee or assignee is neither. This follows the identity profile, which records a role in `/metadata/role/id` for the same reason.",
+      "severity": "error",
+      "eventPrefixes": ["document.permission."],
+      "requiredMetadata": [
+        {
+          "path": "/permission/id",
+          "type": "string"
+        },
+        {
+          "path": "/permission/granteeId",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/reason"]
+    },
+    {
+      "id": "DOC-VERSION-001",
+      "description": "A version event identifies the version it produced or restored.",
+      "rationale": "Version history is the record of what a document said at a point in time. An event that does not name the version cannot be tied to the content it describes.",
+      "severity": "error",
+      "eventPrefixes": ["document.version."],
+      "requiredMetadata": [
+        {
+          "path": "/version/id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DOC-VERSION-002",
+      "description": "A rollback records the version it replaced and why the current content was discarded.",
+      "rationale": "A rollback destroys the prevailing content. Without the replaced version the trail cannot say what was undone, and without a reason it cannot say whether the change was a correction or a reversal of someone else's work.",
+      "severity": "error",
+      "events": ["document.version.rollback"],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/version/previousId",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DOC-DELETE-001",
+      "description": "Deleting a document is justified, and should be approved.",
+      "rationale": "Deletion is the operation an audit trail is least able to reconstruct after the fact, because the evidence is what was removed. Approval is recommended rather than required: many systems legitimately allow an owner to delete their own draft, and a rule that forbade it would be ignored rather than followed.",
+      "severity": "error",
+      "events": ["document.file.delete"],
+      "requiredPaths": ["/reason"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "DOC-RETENTION-001",
+      "description": "A retention change records the resulting retention class, the transition and why it was made.",
+      "rationale": "Retention determines how long the evidence exists at all, so a change to it is a change to the audit trail's own reach. The profile requires the state and the transition to be recorded; it does not say what any retention class must mean, or how long anything must be kept, because those are organization and jurisdiction decisions this specification does not make.",
+      "severity": "error",
+      "eventPrefixes": ["document.retention."],
+      "requiredPaths": ["/change", "/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/retention/class",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "DOC-HOLD-001",
+      "description": "A legal hold event records whether the hold is in force and why it changed.",
+      "rationale": "A hold suspends normal retention, so an event that does not state the resulting condition leaves the document's disposition ambiguous. The profile records the state and the justification only; it asserts nothing about any jurisdiction's obligations, and conformance with this rule is not compliance with any legal duty.",
+      "severity": "error",
+      "eventPrefixes": ["document.legal-hold."],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/legalHold/active",
+          "type": "boolean"
+        }
+      ],
+      "recommendedPaths": ["/approval"]
+    }
+  ]
+}

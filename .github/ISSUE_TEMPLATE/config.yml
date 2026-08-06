@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/OpenAuditModel/OpenAuditViewer/security/advisories/new
+    about: Report a vulnerability privately. Never in a public issue.
+  - name: Specification question
+    url: https://github.com/OpenAuditModel/OpenAuditModel/issues
+    about: Questions about the event model, the schema or a profile belong in the specification repository.

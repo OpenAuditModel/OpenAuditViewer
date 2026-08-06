@@ -1,0 +1,399 @@
+{
+  "profileVersion": "0.1",
+  "name": "message-broker-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Message Broker Management Profile",
+  "description": "Additional conformance requirements for message broker control-plane audit events: cluster, topic, queue, exchange, stream and consumer-group administration, access control lists, quotas, broker configuration, offset resets and message replay. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. Data-plane traffic — publishing, consuming, acknowledging and automatic rebalancing — is deliberately not governed, and message payloads are never recorded.",
+  "rules": [
+    {
+      "id": "BROKER-CORE-001",
+      "description": "Every governed control-plane operation records the authorization decision that permitted it, the broker family it was performed against and the broker deployment it acted on.",
+      "rationale": "A broker administration event without a recorded decision cannot be reviewed: nothing distinguishes an operation policy allowed from one performed with a standing cluster-admin credential that policy never saw. The broker family is what makes every other field interpretable, because the same word means different things across families — an offset is a durable log position on one broker and has no meaning at all on a work queue, and an ACL is a per-resource rule on one and a virtual-host regular expression on another. The deployment identifier is what makes the trail searchable: fleets run dozens of clusters holding identically named topics, and `application.environment` alone cannot tell a reviewer which of them lost its data.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "requiredPaths": ["/authorization"],
+      "requiredMetadata": [
+        {
+          "path": "/broker/system",
+          "type": "string"
+        },
+        {
+          "path": "/broker/clusterId",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "BROKER-CORE-002",
+      "description": "A governed control-plane operation should record why it happened, how the operator was authenticated, which container the affected resource lives in, and how it correlates with the wider administrative workflow.",
+      "rationale": "These are the fields a reviewer reaches for first and an automated control plane omits most often. They are recommended rather than required because a conforming producer may legitimately have none of them: a broker managed entirely by a reconciliation loop has no interactive authentication, a cluster-level event has no containing resource, and a single-step change has nothing to correlate with. A missing justification should prompt a question, not fail a build.",
+      "severity": "warning",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "recommendedPaths": [
+        "/reason",
+        "/authentication",
+        "/resource/parentId",
+        "/request/correlationId"
+      ]
+    },
+    {
+      "id": "BROKER-RISK-001",
+      "description": "Every governed control-plane operation declares whether it discards data or withdraws access.",
+      "rationale": "A broker control plane exposes reversible and irreversible operations through the same interface, and the profile cannot tell them apart from an event name alone: whether a configuration change discards retained messages depends on the direction of the change, and whether a consumer-group update loses committed positions depends on the broker. Only the producer knows. Recording the answer — including `false`, which is an answer rather than an absence — is what lets a reviewer filter the small set of operations that cannot be undone out of a stream dominated by routine ones, and it is the flag the conditional rules in this profile depend on.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "requiredMetadata": [
+        {
+          "path": "/broker/operation/destructive",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "BROKER-RISK-002",
+      "description": "An operation the producer declared destructive is justified, and should be approved.",
+      "rationale": "Purging a queue, deleting a topic or shortening a retention window destroys the very messages an investigation would later want, so the event is the only surviving evidence of why it was acceptable. These operations are also the ones most often performed under incident pressure, when the justification is clearest to the operator and least recoverable afterwards. Approval is recommended rather than required because a great many destructive broker operations are legitimately unilateral — clearing a development queue, deleting a topic the same team created an hour ago — and a rule that demanded a second signature for all of them would be switched off rather than met.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "when": {
+        "path": "/metadata/broker/operation/destructive",
+        "equals": true
+      },
+      "requiredPaths": ["/reason"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "BROKER-RISK-003",
+      "description": "An operation the producer declared to need approval records the approval it obtained or failed to obtain.",
+      "rationale": "Which broker operations require a second signature is an organizational decision that differs by cluster, environment and team, so the profile does not attempt to decide it: the producer declares that policy applied, and the profile enforces the consequence. Without the approval object an event asserts that a control existed and says nothing about whether it was satisfied, which is the least useful thing an audit trail can record. The rule requires the approval to be present, not to be granted, so that a rejected or expired approval remains recordable — a change blocked by a control is exactly the event a reviewer most wants to find.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "when": {
+        "path": "/metadata/broker/approvalRequired",
+        "equals": true
+      },
+      "requiredPaths": ["/approval"]
+    },
+    {
+      "id": "BROKER-FAIL-001",
+      "description": "A failed control-plane operation records a coarse classification of the failure.",
+      "rationale": "Failed broker administration is where an outage and an intrusion look identical at first glance, and both arrive in bulk: a misconfigured operator retries, and a principal probing for permissions produces the same shape of traffic. The core requires a producer-defined failure code; the profile additionally requires the coarse class, because a reviewer triaging several hundred failures needs to separate authorization refusals from timeouts and validation errors without first learning every producer's code vocabulary. The classification is a small token and, unlike a message, cannot carry broker state or payload fragments.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.cluster.create",
+        "broker.cluster.delete",
+        "broker.cluster.failover",
+        "broker.cluster.scale",
+        "broker.cluster.upgrade",
+        "broker.configuration.update",
+        "broker.consumer-group.create",
+        "broker.consumer-group.delete",
+        "broker.consumer-group.update",
+        "broker.exchange.create",
+        "broker.exchange.delete",
+        "broker.exchange.update",
+        "broker.message.replay",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.create",
+        "broker.queue.delete",
+        "broker.queue.purge",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.create",
+        "broker.stream.delete",
+        "broker.stream.trim",
+        "broker.stream.update",
+        "broker.topic.create",
+        "broker.topic.delete",
+        "broker.topic.update"
+      ],
+      "when": {
+        "path": "/event/outcome",
+        "equals": "failure"
+      },
+      "requiredPaths": ["/event/error/type"],
+      "recommendedPaths": ["/event/error/retryable"]
+    },
+    {
+      "id": "BROKER-LIFECYCLE-001",
+      "description": "Creating a topic, queue, stream or exchange records the classification of the data it will carry, and should record who owns it.",
+      "rationale": "A broker resource is created once and lives for years, and the sensitivity of what flows through it is decided at that moment and almost never revisited. An unclassified topic becomes a data store nobody can triage: when it is later replayed, exported or exposed by a misconfigured ACL, the first question a responder asks — was this payment data or build telemetry — has no recorded answer, and reconstructing it means reading the messages, which is precisely what the audit trail exists to avoid. Ownership is recommended rather than required because a resource created by a platform pipeline may genuinely have no owning principal at creation time.",
+      "severity": "error",
+      "events": [
+        "broker.topic.create",
+        "broker.queue.create",
+        "broker.stream.create",
+        "broker.exchange.create"
+      ],
+      "requiredPaths": ["/resource/classification"],
+      "recommendedPaths": ["/resource/ownerId"]
+    },
+    {
+      "id": "BROKER-CHANGE-001",
+      "description": "An operation that modifies broker configuration, access control, a quota or a consumer position records what it changed.",
+      "rationale": "These operations mutate state that was already there, so the event's value is entirely in the transition: an access-control change that records only that an ACL was written cannot answer whether a principal gained or lost the ability to read a topic, and a configuration change that records only the resulting value cannot show that retention was cut from thirty days to one. The core deliberately accepts changed field names, a sanitized subset, a hash or a reference in place of full before and after states, so this requirement can be met without copying broker state into the audit trail.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.configuration.update",
+        "broker.consumer-group.update",
+        "broker.exchange.update",
+        "broker.offset.reset",
+        "broker.permission.grant",
+        "broker.permission.revoke",
+        "broker.queue.update",
+        "broker.quota.create",
+        "broker.quota.delete",
+        "broker.quota.update",
+        "broker.stream.update",
+        "broker.topic.update"
+      ],
+      "requiredPaths": ["/change"],
+      "recommendedPaths": ["/change/changedFields"]
+    },
+    {
+      "id": "BROKER-ACL-001",
+      "description": "A broker access-control change names the principal whose access changed and the permission involved, and should record whether the rule allows or denies.",
+      "rationale": "Broker access control is where the confidentiality of every topic on a cluster is actually decided, and an ACL event that does not name the principal is not reviewable at all — the resource tells a reviewer which topic was touched and nothing about who can now read it.The allow-or-deny effect is recommended rather than required because several broker families support only positive grants, and forcing them to assert `allow` on every event adds a constant rather than a fact. The principal is recorded in namespaced metadata rather than in `/subject`, because [actor-model.md](../../specification/actor-model.md) §5 defines `subject` as the principal *on whose behalf* the actor acted, and forbids its use as a generic target. A grantee or assignee is neither. This follows the identity profile, which records a role in `/metadata/role/id` for the same reason.",
+      "severity": "error",
+      "events": [
+        "broker.acl.grant",
+        "broker.acl.revoke",
+        "broker.permission.grant",
+        "broker.permission.revoke"
+      ],
+      "requiredMetadata": [
+        {
+          "path": "/broker/acl/permission",
+          "type": "string"
+        },
+        {
+          "path": "/broker/acl/principalId",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/broker/acl/effect"]
+    },
+    {
+      "id": "BROKER-QUOTA-001",
+      "description": "A quota change records which dimension of consumption was limited.",
+      "rationale": "A quota is an availability control, and tightening one is a denial-of-service risk while loosening one removes a guardrail that protected every other tenant on the cluster. Neither can be assessed without knowing what was limited: a change to a throughput ceiling, a connection count and a storage allowance have completely different consequences and completely different suspects. The dimension is required as a token; the profile deliberately does not constrain the numeric values, because the rule language cannot compare numbers and a limit is only meaningful against a deployment's own baseline.",
+      "severity": "error",
+      "events": ["broker.quota.create", "broker.quota.delete", "broker.quota.update"],
+      "requiredMetadata": [
+        {
+          "path": "/broker/quota/dimension",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "BROKER-OFFSET-001",
+      "description": "An offset reset records the position it moved from, the position it moved to, and why.",
+      "rationale": "Resetting a consumer position is the broker operation with the largest invisible blast radius: moving backwards replays side effects that already happened, and moving forwards silently abandons messages that will never be processed. Neither is visible in the resource, the outcome or the actor — only the two positions show what happened, and only the justification shows whether it was deliberate. Both positions are recorded as strings because broker position types differ irreconcilably: a 64-bit log offset, a stream entry identifier and a composite message identifier are all positions, and forcing one numeric shape would exclude most brokers.",
+      "severity": "error",
+      "events": ["broker.offset.reset"],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/broker/offset/previous",
+          "type": "string"
+        },
+        {
+          "path": "/broker/offset/target",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/broker/offset/strategy"]
+    },
+    {
+      "id": "BROKER-REPLAY-001",
+      "description": "A message replay records how much was replayed and why, and should record how many messages it covered.",
+      "rationale": "A replay re-delivers messages that consumers already handled, so its consequence is measured in duplicated side effects — repeated payments, repeated notifications, repeated downstream writes — and the difference between replaying one message and replaying an entire topic is the difference between a correction and an incident. The scope is required because it is the only field that carries that difference; the count is recommended because a producer streaming a replay may not know it in advance. The replayed messages themselves are never recorded: an audit event states that a replay happened, and the messages remain in the broker under their own controls.",
+      "severity": "error",
+      "events": ["broker.message.replay"],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        {
+          "path": "/broker/replay/scope",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/broker/replay/messageCount"]
+    }
+  ]
+}

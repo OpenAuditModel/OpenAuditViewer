@@ -1,0 +1,256 @@
+{
+  "profileVersion": "0.1",
+  "name": "incident-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Incident Management Profile",
+  "description": "Additional conformance requirements for the lifecycle of incidents, problems and corrective actions: raising, reprioritising, assigning, escalating, resolving, closing, cancelling and reopening a case, recording a root cause analysis, and opening and verifying a corrective action. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. High-volume monitoring, timeline and read events such as monitoring.alert.raise, incident.note.create and incident.case.view are deliberately not governed.",
+  "rules": [
+    {
+      "id": "INC-CORE-001",
+      "description": "Every governed incident, problem and corrective-action operation records the authorization decision that permitted it and the lifecycle state the record was left in.",
+      "rationale": "A case record is rewritten by many hands over days or weeks, and the trail is read long after everyone involved has moved on. Without a recorded decision nothing distinguishes a transition policy allowed from one an operator forced through a console. Without the resulting state, a reviewer replaying the events cannot say what condition the case was actually in at any point, because the profile cannot look inside `/change/after` and a consumer would have to parse a free-form object to find out. Recording the state in one typed, namespaced field is what makes the sequence readable and indexable at all.",
+      "severity": "error",
+      "events": [
+        "corrective-action.close",
+        "corrective-action.open",
+        "corrective-action.verify",
+        "incident.assignment.change",
+        "incident.case.cancel",
+        "incident.case.close",
+        "incident.case.create",
+        "incident.case.reopen",
+        "incident.case.resolve",
+        "incident.major.declare",
+        "incident.priority.change",
+        "incident.rca.approve",
+        "incident.rca.create",
+        "incident.rca.update",
+        "problem.case.close",
+        "problem.case.create"
+      ],
+      "requiredPaths": ["/authorization"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "INC-CORE-002",
+      "description": "A governed incident operation should carry the correlation identifier shared by the rest of the handling and name the resources the case is about.",
+      "rationale": "Incident handling is the clearest example in this specification of an operation that is not one event. Raising, escalating, resolving, analysing, remediating and closing are separate events emitted hours or weeks apart, often by different applications and principals, and they are assembled by correlation rather than by timestamp. These are recommended and not required because a conforming producer may have no correlation facility at all, and because an incident about a process rather than a system legitimately has no affected resource to name. A missing correlation identifier should prompt a question, not fail a build.",
+      "severity": "warning",
+      "events": [
+        "corrective-action.close",
+        "corrective-action.open",
+        "corrective-action.verify",
+        "incident.assignment.change",
+        "incident.case.cancel",
+        "incident.case.close",
+        "incident.case.create",
+        "incident.case.reopen",
+        "incident.case.resolve",
+        "incident.major.declare",
+        "incident.priority.change",
+        "incident.rca.approve",
+        "incident.rca.create",
+        "incident.rca.update",
+        "incident.sla.breach",
+        "problem.case.close",
+        "problem.case.create"
+      ],
+      "recommendedPaths": ["/request/correlationId", "/relatedResources"]
+    },
+    {
+      "id": "INC-CREATE-001",
+      "description": "Raising a case should record how the condition was noticed, when it began, and how badly it hurt.",
+      "rationale": "Detection time and business impact are known accurately only at the moment a case is opened, and are reconstructed badly or not at all afterwards. They are recommended rather than required because impact and urgency scales differ between organizations and some cases are raised by a customer with no measurable detection point, and a requirement that could not be met honestly would be satisfied with a placeholder instead.",
+      "severity": "warning",
+      "events": ["incident.case.create", "problem.case.create"],
+      "recommendedPaths": [
+        "/reason",
+        "/metadata/incident/detectedAt",
+        "/metadata/incident/impact",
+        "/metadata/incident/urgency"
+      ]
+    },
+    {
+      "id": "INC-STATE-001",
+      "description": "An operation that moves a case between lifecycle states records the transition as a before and after.",
+      "rationale": "The state a case ends in is not the same fact as the state it came from. Only the transition shows that a case went from open to closed rather than from cancelled to closed, and only the transition makes an impossible sequence visible — a closure of something never resolved, a resolution of something already closed. An event that records the destination alone is a snapshot, and a trail of snapshots cannot be replayed.",
+      "severity": "error",
+      "events": [
+        "incident.priority.change",
+        "incident.assignment.change",
+        "incident.major.declare",
+        "incident.case.resolve",
+        "incident.case.close",
+        "incident.case.cancel",
+        "problem.case.close",
+        "corrective-action.close"
+      ],
+      "requiredPaths": ["/change"]
+    },
+    {
+      "id": "INC-STATE-002",
+      "description": "A transition that reflects a judgement — reprioritisation, escalation to major, closure or cancellation — records why it was made.",
+      "rationale": "These are the transitions where the record and the decision can diverge. Downgrading a priority, declaring a major incident, closing a case or abandoning one are all defensible and all abusable, and the difference is the justification. A case closed with no stated reason is indistinguishable from a case closed to make a queue look shorter, and that ambiguity is precisely what an incident trail exists to remove. Resolution and reassignment are excluded because they carry their own structured explanation.",
+      "severity": "error",
+      "events": [
+        "incident.priority.change",
+        "incident.major.declare",
+        "incident.case.close",
+        "incident.case.cancel",
+        "problem.case.close",
+        "corrective-action.close"
+      ],
+      "requiredPaths": ["/reason"]
+    },
+    {
+      "id": "INC-PRIORITY-001",
+      "description": "Raising a case, reassessing its priority, escalating it to major and reporting a missed commitment all record the priority in force.",
+      "rationale": "Priority is the field every downstream obligation hangs from: who is paged, how fast a response is owed, whether an escalation was warranted and whether a service commitment was met. Recorded only at creation, it cannot answer any question about the middle of the incident. The profile requires the field and deliberately does not close its vocabulary, because priority scales are an organizational choice and a profile that imposed one would be describing a single service desk rather than a domain.",
+      "severity": "error",
+      "events": [
+        "incident.case.create",
+        "problem.case.create",
+        "incident.priority.change",
+        "incident.major.declare",
+        "incident.sla.breach"
+      ],
+      "requiredMetadata": [
+        {
+          "path": "/incident/priority",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "INC-ASSIGN-001",
+      "description": "Handing a case or a corrective action to someone names the principal who became accountable for it.",
+      "rationale": "Accountability that is not recorded is not accountability. A reassignment or a corrective action opened without naming who now owns it produces a trail that shows work being moved and never shows who was asked to do it, which is the one question a follow-up review always asks.The principal is recorded in namespaced metadata rather than in `/subject`, because [actor-model.md](../../specification/actor-model.md) §5 defines `subject` as the principal *on whose behalf* the actor acted, and forbids its use as a generic target. A grantee or assignee is neither. This follows the identity profile, which records a role in `/metadata/role/id` for the same reason.",
+      "severity": "error",
+      "events": ["incident.assignment.change", "corrective-action.open"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/assigneeId",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/reason"]
+    },
+    {
+      "id": "INC-RESOLVE-001",
+      "description": "Resolving a case records what kind of resolution it was.",
+      "rationale": "A workaround, a permanent fix, a duplicate and a condition that disappeared on its own are four different outcomes with four different follow-up obligations, and a status of `resolved` collapses all of them into one word. The distinction is what tells a later reader whether the underlying fault is still present in production. The recommended fields point at the rest of the story: when the service was actually restored, and which corrective action carries the remaining work.",
+      "severity": "error",
+      "events": ["incident.case.resolve"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/resolutionType",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": [
+        "/reason",
+        "/metadata/incident/resolvedAt",
+        "/metadata/incident/correctiveAction/id"
+      ]
+    },
+    {
+      "id": "INC-CLOSE-001",
+      "description": "When the producer has declared that closing this case required approval, the closure records the approval decision.",
+      "rationale": "Whether a closure needs a second pair of eyes is an organizational policy, not a fact this specification can decide: a service desk closing thousands of routine tickets a week and a safety board closing a reportable incident are both conforming, and requiring approval for every closure would describe one of them and be switched off by the other. The producer declares the obligation and the profile enforces the consequence. The rule requires the decision to be recorded, not to be favourable: an event whose approval is still pending or was rejected and whose outcome is success describes a control bypass, and the trail must be able to say so.",
+      "severity": "error",
+      "events": [
+        "incident.case.close",
+        "incident.case.cancel",
+        "problem.case.close",
+        "corrective-action.close"
+      ],
+      "when": {
+        "path": "/metadata/incident/approvalRequired",
+        "equals": true
+      },
+      "requiredPaths": ["/approval/status"],
+      "recommendedPaths": ["/approval/approvers", "/approval/approvedAt"]
+    },
+    {
+      "id": "INC-REOPEN-001",
+      "description": "Reopening a closed case is a new lifecycle transition, recorded with the transition it made and the reason it was made.",
+      "rationale": "A reopen is the strongest evidence an incident trail can carry that a resolution was wrong, so it is the transition most worth recording well. It is treated as a new auditable step and nothing more: the earlier closure and any approval attached to it remain valid historical records of what was decided at that time, and this profile does not assert that a reopen retracts them or that a fresh approval is owed, because that is an organizational process this specification does not make. Reusing the original correlation identifier, recommended by INC-CORE-002, is what keeps the whole handling readable as one story rather than two unrelated cases.",
+      "severity": "error",
+      "events": ["incident.case.reopen"],
+      "requiredPaths": ["/change", "/reason"],
+      "recommendedPaths": ["/evidence"]
+    },
+    {
+      "id": "INC-RCA-001",
+      "description": "A root cause analysis event records the method the analysis was performed with.",
+      "rationale": "An analysis is trustworthy in proportion to how it was conducted, and the method is the only part of that a machine-readable trail can carry. Two organizations using different techniques still both know which one they used, so the field is universal even though its vocabulary is not, and it is left open for that reason. The profile does not attempt to require the analysis document itself: the rule language cannot inspect the contents of `/evidence`, so a supporting record is recommended by INC-EVIDENCE-001 rather than dishonestly claimed to be enforced.",
+      "severity": "error",
+      "events": ["incident.rca.approve", "incident.rca.create", "incident.rca.update"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/rca/method",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "INC-RCA-002",
+      "description": "Approving a root cause analysis records the approval decision.",
+      "rationale": "This event is an approval, so requiring the approval state is not an added process obligation but a requirement that the event describe itself. An approval event with no recorded decision states that an analysis was reviewed without stating what the review concluded. The status is required rather than required to be `approved`, so that a rejection or a lapsed request stays recordable and visible.",
+      "severity": "error",
+      "events": ["incident.rca.approve"],
+      "requiredPaths": ["/approval/status"],
+      "recommendedPaths": ["/approval/approvers", "/approval/approvedAt"]
+    },
+    {
+      "id": "INC-CAPA-001",
+      "description": "Verifying a corrective action records how the verification was carried out.",
+      "rationale": "Verification is the step that turns a promise into evidence, and an unqualified assertion that an action was verified is worth nothing: reading a ticket, watching production for a week and re-running the failure are all called verification and are not comparable. Recording the method is what lets a later reader judge whether the fix was actually demonstrated. The vocabulary is open because verification techniques are domain-specific.",
+      "severity": "error",
+      "events": ["corrective-action.verify"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/correctiveAction/verificationMethod",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/incident/correctiveAction/verifiedAt"]
+    },
+    {
+      "id": "INC-SLA-001",
+      "description": "A missed service commitment names the commitment that was missed.",
+      "rationale": "A breach event that does not say what was breached records only that someone was unhappy. The commitment identifier is what lets the breach be tied to the obligation it violated and counted against it later, when the commitment itself may have been renegotiated. The profile requires the identifier and asserts nothing about durations or thresholds: the v0.1 rule language compares values for equality and cannot evaluate a numeric range, so a target is recorded as a name rather than checked as a bound. This event is excluded from INC-CORE-001 because a breach is a system observation rather than an authorized human action, and demanding an authorization decision for it would force producers to invent one.",
+      "severity": "error",
+      "events": ["incident.sla.breach"],
+      "requiredMetadata": [
+        {
+          "path": "/incident/sla/target",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/metadata/incident/sla/breachedAt"]
+    },
+    {
+      "id": "INC-EVIDENCE-001",
+      "description": "Root-cause and corrective-action events should reference the material that supports them.",
+      "rationale": "The analysis document, the change record and the verification report are what make an incident conclusion checkable rather than merely stated, and `/evidence` is where the core model puts references to them. This is a recommendation and not a requirement for a reason worth stating plainly: the v0.1 rule language can test that `/evidence` is present and non-empty, and cannot test that it contains an entry of any particular type. A rule that required `/evidence` would be satisfied by an unrelated reference, so the profile asks for evidence rather than pretending to verify it.",
+      "severity": "warning",
+      "events": [
+        "corrective-action.close",
+        "corrective-action.open",
+        "corrective-action.verify",
+        "incident.rca.approve",
+        "incident.rca.create",
+        "incident.rca.update"
+      ],
+      "recommendedPaths": ["/evidence"]
+    }
+  ]
+}

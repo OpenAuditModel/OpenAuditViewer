@@ -1,0 +1,55 @@
+{
+  "name": "openaudit-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop viewer for OpenAuditModel-conformant audit logs. Validates, privacy-lints, verifies digests and chains, and reconstructs cross-application flows, entirely offline.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenAuditModel/OpenAuditViewer.git"
+  },
+  "homepage": "https://github.com/OpenAuditModel/OpenAuditViewer",
+  "bugs": {
+    "url": "https://github.com/OpenAuditModel/OpenAuditViewer/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run generate-validator && tsc && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run generate-validator && npm run typecheck && npm test && npm run format:check",
+    "generate-validator": "node tools/generate-validator.mjs",
+    "demo-logs": "tsx tools/generate-demo-logs.mjs",
+    "sync-vendored": "node tools/sync-vendored.mjs && npm run generate-validator",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-opener": "^2",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "canonicalize": "^3.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.9",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^4.1.10"
+  }
+}

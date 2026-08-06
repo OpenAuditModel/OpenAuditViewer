@@ -1,0 +1,258 @@
+{
+  "profileVersion": "0.1",
+  "name": "api-and-integration-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "API and Integration Management Profile",
+  "description": "Additional conformance requirements for the administration of API credentials, webhook subscriptions and third-party integrations: issuing and revoking API keys, creating and reconfiguring webhooks, connecting, reauthorizing and disconnecting external systems, and starting or cancelling integration syncs. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. Data-plane traffic is deliberately not governed: ordinary API requests, webhook deliveries and routine integration polling match no rule in this profile.",
+  "rules": [
+    {
+      "id": "INTEGRATION-CORE-001",
+      "description": "Every governed API, webhook or integration administration event records the authorization decision that permitted it and the kind of integration point it acted on.",
+      "rationale": "An integration is a standing hole in a trust boundary, and the events that open, widen or close one are the only record that the hole was opened deliberately. Without a recorded decision nothing distinguishes a change a policy allowed from one that bypassed policy, and without the kind of integration point a reviewer cannot tell whether the event concerns a credential someone holds, a callback that pushes data outward, or a connector that pulls data in — three operations with entirely different blast radii that otherwise look identical in a report.",
+      "severity": "error",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "webhook.create",
+        "webhook.update",
+        "webhook.enable",
+        "webhook.disable",
+        "webhook.delete",
+        "webhook.test",
+        "integration.connect",
+        "integration.disconnect",
+        "integration.enable",
+        "integration.disable",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "eventPrefixes": ["integration.configuration."],
+      "requiredPaths": ["/authorization"],
+      "requiredMetadata": [{ "path": "/integration/type", "type": "string" }]
+    },
+    {
+      "id": "INTEGRATION-CORE-002",
+      "description": "A governed integration event should record why it happened, whether it was approved, which external party it concerns, and how it correlates with the wider operation.",
+      "rationale": "These are the fields a reviewer reaches for first and a producer omits most often. They are recommended rather than required because a scheduled rotation has no business justification beyond the schedule, because most integration changes legitimately need no approval, and because a first-party API key has no external counterparty to name. A missing one of these should prompt a question, not fail a build.",
+      "severity": "warning",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "webhook.create",
+        "webhook.update",
+        "webhook.enable",
+        "webhook.disable",
+        "webhook.delete",
+        "webhook.test",
+        "integration.connect",
+        "integration.disconnect",
+        "integration.enable",
+        "integration.disable",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "eventPrefixes": ["integration.configuration."],
+      "recommendedPaths": [
+        "/reason",
+        "/approval",
+        "/request/correlationId",
+        "/metadata/integration/provider"
+      ]
+    },
+    {
+      "id": "INTEGRATION-CORE-003",
+      "description": "When the producer declares that local policy required approval for this change, the event carries the approval and its state.",
+      "rationale": "Approval requirements for integration changes are set by the operator, not by this specification: one organization gates every outbound webhook, another gates none. So the profile does not guess. When a producer has declared that approval was required, an event that omits the approval record is evidence that the control was skipped or that the trail cannot show it was honoured — and those two are indistinguishable after the fact, which is exactly the ambiguity an audit trail exists to remove. The status is required alongside the object because an approval with no state answers nothing.",
+      "severity": "error",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "webhook.create",
+        "webhook.update",
+        "webhook.enable",
+        "webhook.disable",
+        "webhook.delete",
+        "webhook.test",
+        "integration.connect",
+        "integration.disconnect",
+        "integration.enable",
+        "integration.disable",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "eventPrefixes": ["integration.configuration."],
+      "when": { "path": "/metadata/integration/approvalRequired", "equals": true },
+      "requiredPaths": ["/approval", "/approval/status"]
+    },
+    {
+      "id": "INTEGRATION-AUTHN-001",
+      "description": "A credential or connection-authorization operation performed by a human user records how that user was authenticated.",
+      "rationale": "Issuing, rotating or revoking an API key and authorizing or tearing down a connection are the operations an attacker performs to establish or remove persistence. When a person did it, the strength of the session behind the action is the fact that separates a routine administrative change from a change made through a stolen cookie, and it can never be reconstructed later. The requirement is conditional on the actor being a person because a scheduled rotation worker has no interactive session to describe, and a rule that demanded one would be switched off rather than met.",
+      "severity": "error",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "integration.connect",
+        "integration.reauthorize",
+        "integration.disconnect"
+      ],
+      "when": { "path": "/actor/type", "equals": "user" },
+      "requiredPaths": ["/authentication"]
+    },
+    {
+      "id": "INTEGRATION-AUTHN-002",
+      "description": "A credential or connection-authorization operation performed by an administrator records how that administrator was authenticated.",
+      "rationale": "This states the same requirement as INTEGRATION-AUTHN-001 for the other human principal type in the core model. It exists as a separate rule because the v0.1 rule language permits exactly one equality condition per rule and has no disjunction, so `user` and `admin` cannot be expressed in one condition. Splitting the rule is the honest way to cover both; collapsing them by dropping the condition would demand an interactive session from every automated rotation worker.",
+      "severity": "error",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "integration.connect",
+        "integration.reauthorize",
+        "integration.disconnect"
+      ],
+      "when": { "path": "/actor/type", "equals": "admin" },
+      "requiredPaths": ["/authentication"]
+    },
+    {
+      "id": "INTEGRATION-KEY-001",
+      "description": "An API key lifecycle event names the credential it acted on through a non-secret reference.",
+      "rationale": "A key rotation that does not say which key rotated cannot be tied to the calls made before and after it, so neither the exposure window nor the callers that broke can be established. The reference is a handle the producer can resolve; it is never the key. The profile requires the reference precisely so that producers have somewhere non-sensitive to put the answer. Nothing enforces that discipline: the privacy linter catches published credential formats and high-entropy values, but a producer who stores a real key here may well pass it, so this is a requirement on the producer rather than a check.",
+      "severity": "error",
+      "events": ["api-key.create", "api-key.rotate", "api-key.revoke", "api-key.delete"],
+      "requiredMetadata": [{ "path": "/integration/credentialReference", "type": "string" }]
+    },
+    {
+      "id": "INTEGRATION-KEY-002",
+      "description": "Issuing or rotating an API key should record what the key may do and when it stops working.",
+      "rationale": "Scope and expiry are what turn a credential into a reviewable one: an unbounded, never-expiring key is the finding, and the only moment the answer is known is issuance. Both are recommended rather than required because plenty of legitimate deployments issue keys with no expiry by design, and because scope vocabularies differ enough between products that a required field would be filled with a placeholder.",
+      "severity": "warning",
+      "events": ["api-key.create", "api-key.rotate"],
+      "recommendedPaths": [
+        "/metadata/integration/scope",
+        "/metadata/integration/expiresAt",
+        "/resource/ownerId"
+      ]
+    },
+    {
+      "id": "INTEGRATION-REVOKE-001",
+      "description": "Revoking, deleting, disabling or disconnecting an API credential, webhook or integration is justified.",
+      "rationale": "Withdrawal breaks something that was working for somebody, and the three explanations — planned decommission, incident containment, and mistake — produce identical events unless the reason is recorded. This is also the class of operation most often performed under pressure, when the person who could explain it is busy, so the justification has to be captured at the time or not at all.",
+      "severity": "error",
+      "events": [
+        "api-key.revoke",
+        "api-key.delete",
+        "webhook.disable",
+        "webhook.delete",
+        "integration.disconnect",
+        "integration.disable",
+        "integration.sync.cancel"
+      ],
+      "requiredPaths": ["/reason"]
+    },
+    {
+      "id": "INTEGRATION-HOOK-001",
+      "description": "A webhook administration event identifies the subscription and classifies the destination the callback is delivered to.",
+      "rationale": "A webhook is an instruction to push data out of the system on an ongoing basis, so the single fact that determines its risk is where the data goes. The profile requires a classification rather than the callback URL on purpose: delivery URLs routinely carry signed access parameters or shared secrets in their path or query string, so recording one turns the audit trail into a credential store. A class such as an internal service, a partner network or the public internet answers the reviewer's question without carrying anything an attacker can use.",
+      "severity": "error",
+      "events": [
+        "webhook.create",
+        "webhook.update",
+        "webhook.enable",
+        "webhook.disable",
+        "webhook.delete",
+        "webhook.test"
+      ],
+      "requiredMetadata": [
+        { "path": "/integration/webhookId", "type": "string" },
+        { "path": "/integration/endpointClass", "type": "string" }
+      ]
+    },
+    {
+      "id": "INTEGRATION-CONFIG-001",
+      "description": "Reconfiguring a webhook subscription or an integration records the change itself.",
+      "rationale": "An update event that says only that something changed is not reviewable: retry behaviour, event selection, field mapping and destination are all reached through the same operation, and they are not equally consequential. The core `/change` object is where the difference belongs. The changed field names are recommended alongside it because they are the cheapest useful form of the answer and they carry no configuration values; before and after states are neither required nor recommended, because integration configuration frequently contains endpoints and headers that must not be copied into an audit event.",
+      "severity": "error",
+      "events": ["webhook.update"],
+      "eventPrefixes": ["integration.configuration."],
+      "requiredPaths": ["/change"],
+      "recommendedPaths": ["/change/changedFields"]
+    },
+    {
+      "id": "INTEGRATION-CONN-001",
+      "description": "An integration lifecycle, configuration or sync event identifies the connection instance and the external party on the other side of it.",
+      "rationale": "Organizations run many connections to the same kind of system and several to the same provider, so neither the provider name nor the resource identifier alone locates the integration that changed. Recording both is what allows a reviewer to answer the question that actually gets asked after a third-party compromise — which of our connections to that party were live, and who changed them — without needing the producer's internal topology.",
+      "severity": "error",
+      "events": [
+        "integration.connect",
+        "integration.disconnect",
+        "integration.enable",
+        "integration.disable",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "eventPrefixes": ["integration.configuration."],
+      "requiredMetadata": [
+        { "path": "/integration/connectionId", "type": "string" },
+        { "path": "/integration/provider", "type": "string" }
+      ]
+    },
+    {
+      "id": "INTEGRATION-FLOW-001",
+      "description": "Connecting, reauthorizing, starting a sync or cancelling a sync records the correlation identifier that ties the steps of the workflow together.",
+      "rationale": "These four operations are never a single event. A connection is a redirect, a consent, a callback and a token exchange; a sync is a start, a run and an end. Reconstructing what happened means reassembling those steps, and a producer-assigned correlation identifier is the only thing that makes that possible. It is required here and merely recommended elsewhere because elsewhere there is nothing to correlate with. This is deliberately not a trace identifier: correlation is a value the producer stamps on related events, and requiring `traceId` would make conformance depend on distributed tracing being deployed.",
+      "severity": "error",
+      "events": [
+        "integration.connect",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "requiredPaths": ["/request/correlationId"]
+    },
+    {
+      "id": "INTEGRATION-FAIL-001",
+      "description": "A failed integration operation classifies the failure, not only names it.",
+      "rationale": "The core model already requires a failure code. A code alone is a producer-defined string, so a reviewer looking at a burst of failures cannot tell whether an integration is rejecting credentials, being denied permission, timing out or hitting a quota without learning that producer's vocabulary first. The coarse classification is what makes 'is this a credential problem or a network problem?' answerable across products, and that question decides whether a failure burst is an outage or an attack.",
+      "severity": "error",
+      "events": [
+        "api-key.create",
+        "api-key.rotate",
+        "api-key.revoke",
+        "api-key.delete",
+        "webhook.create",
+        "webhook.update",
+        "webhook.enable",
+        "webhook.disable",
+        "webhook.delete",
+        "webhook.test",
+        "integration.connect",
+        "integration.disconnect",
+        "integration.enable",
+        "integration.disable",
+        "integration.reauthorize",
+        "integration.sync.start",
+        "integration.sync.cancel"
+      ],
+      "eventPrefixes": ["integration.configuration."],
+      "when": { "path": "/event/outcome", "equals": "failure" },
+      "requiredPaths": ["/event/error/type"]
+    }
+  ]
+}

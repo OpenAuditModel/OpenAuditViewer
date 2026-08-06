@@ -1,0 +1,298 @@
+{
+  "profileVersion": "0.1",
+  "name": "deployment-and-change-management",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Deployment and Change Management Profile",
+  "description": "Additional conformance requirements for audit events that describe material change to a running system: releases, deployments, promotions, rollbacks, cancellations, infrastructure application, configuration and secret changes, and change requests. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. The profile supports fully automated continuous delivery as well as human-gated release: it never decides which change needs approval, it requires the producer to record whether one was required. Routine pipeline telemetry such as polling, build log output and secret reads is deliberately not governed.",
+  "rules": [
+    {
+      "id": "DEPLOY-CORE-001",
+      "description": "Every governed change identifies the deployment, release or change record it belongs to, and the environment the change was applied to.",
+      "rationale": "One change produces events from many stages and often from several different services, and nothing else in an event ties those stages together: `id` is unique per event and `resource` legitimately differs between the release, the approval and the target. Without a shared identifier a reviewer cannot say which approval belongs to which deployment, or which rollback undid which release. The environment is recorded separately from `application.environment` because `application` describes the system that performed the change, not the system that received it: a delivery platform runs in one environment and deploys into others, and conflating the two makes every environment-scoped review wrong.",
+      "severity": "error",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "requiredMetadata": [
+        {
+          "path": "/deployment/id",
+          "type": "string"
+        },
+        {
+          "path": "/deployment/environment",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DEPLOY-CORE-002",
+      "description": "Every governed change states whether policy required it to be approved.",
+      "rationale": "This profile deliberately does not decide which changes need a human approval. Continuous delivery, human-gated release, scheduled maintenance and emergency repair are all legitimate delivery models, and a profile that demanded an approval on every production deployment would describe one of them and be switched off by everyone using another. The producer declares the policy in this flag and DEPLOY-APPROVAL-002 enforces the consequence. The flag is required rather than inferred because a conditional rule contributes nothing when its path is absent: silence would read as \"no approval was required\" when it may mean \"nobody recorded whether one was\", and those are the two answers a change review most needs to tell apart.",
+      "severity": "error",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "requiredMetadata": [
+        {
+          "path": "/deployment/approvalRequired",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "DEPLOY-CORE-003",
+      "description": "A governed change should record why it was made, the pipeline that produced it, and the identifier that correlates it with the rest of the operation.",
+      "rationale": "These are the fields a reviewer reaches for first and a producer omits most often. They are recommended rather than required because a routine automated deployment often has no justification beyond the change having been merged, because not every change comes from a pipeline, and because a configuration change made by hand from a console has no correlation identifier to carry. A missing one should prompt a question rather than fail a build.",
+      "severity": "warning",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "recommendedPaths": ["/reason", "/request/correlationId", "/metadata/deployment/pipelineId"]
+    },
+    {
+      "id": "DEPLOY-RELEASE-001",
+      "description": "A release or infrastructure event names the version it concerns.",
+      "rationale": "A deployment trail that does not name a version records that something was released without recording what. Every later question depends on it: which build introduced a regression, whether an environment is running the artifact that was approved, and whether a rollback reached the version it aimed at. The profile requires an identifier and asserts nothing about its form, because semantic versions, tags, ordinal build numbers and content digests are all in legitimate use and no scheme is universal. What was changed by the release belongs in `relatedResources`, which is recommended rather than required so that a single-target deployment is not forced to duplicate its own `resource`.",
+      "severity": "error",
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "requiredMetadata": [
+        {
+          "path": "/deployment/version",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/relatedResources", "/change/deploymentId"]
+    },
+    {
+      "id": "DEPLOY-RELEASE-002",
+      "description": "An event that changes what is running records the version it replaced.",
+      "rationale": "An incident review starts from what was running before, and that answer is only cheaply available at the moment of the change: reconstructing it later means trusting that no other event was lost from the same environment. Recording both versions on the event that moved between them makes the transition self-describing, lets a rollback be matched to the deployment it reverted, and turns \"which version was live at this time?\" into a lookup rather than a replay. A first deployment into an empty environment has a real answer too, and producers should record it explicitly rather than omit the field.",
+      "severity": "error",
+      "events": [
+        "deployment.release.deploy",
+        "deployment.release.promote",
+        "deployment.release.rollback",
+        "deployment.infrastructure.apply"
+      ],
+      "requiredMetadata": [
+        {
+          "path": "/deployment/previousVersion",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DEPLOY-REVERT-001",
+      "description": "Reverting or stopping a change in flight records the decision that permitted it and why the change was undone.",
+      "rationale": "A rollback or a cancellation discards work that the normal path had already accepted, and it is usually performed under time pressure by whoever was available rather than by whoever owns the change. Without a recorded authorization decision nothing distinguishes a considered revert from one person overriding another team, and without a justification the trail cannot say whether the change was withdrawn because it was wrong, because it was risky, or because something unrelated was failing at the time. Approval is recommended rather than required here precisely because a revert is often the correct emergency action and the approval is retrospective.",
+      "severity": "error",
+      "events": ["deployment.release.rollback", "deployment.release.cancel"],
+      "requiredPaths": ["/authorization", "/reason"],
+      "recommendedPaths": ["/approval"]
+    },
+    {
+      "id": "DEPLOY-CONFIG-001",
+      "description": "A configuration, feature, policy, retention or secret change records the decision that permitted it and which settings changed.",
+      "rationale": "Configuration is where controls are switched off, and a configuration change usually leaves no trace in business data at all, so the event is the only evidence that it happened. The authorization decision is what separates a change policy allowed from one that bypassed policy. The names of the settings that changed are required rather than their values, because the field list is the one representation every configuration system can produce and the one that never discloses a secret: a rotation records that the secret field changed and nothing about the secret. Producers may add sanitized before and after values where they are safe; this profile does not require them.",
+      "severity": "error",
+      "events": [
+        "configuration.setting.create",
+        "configuration.setting.update",
+        "configuration.setting.delete",
+        "configuration.secret.rotate",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update"
+      ],
+      "requiredPaths": ["/authorization", "/change/changedFields"]
+    },
+    {
+      "id": "DEPLOY-APPROVAL-001",
+      "description": "An event that is itself an approval decision records the resulting approval status.",
+      "rationale": "These events exist to record a human decision, so an approval event without an approval state records that a decision was reached without recording which one. The status is required because it is the fact the event is about; the workflow and the approving principals are recommended because a two-person review conducted in a ticket is a real approval process and has no workflow engine behind it. The profile does not require the status to match the event name: an approval attempt can fail, and an event that had to lie about its own outcome to conform would be worse evidence than one that did not conform.",
+      "severity": "error",
+      "events": ["deployment.release.approve", "change.request.approve", "change.request.reject"],
+      "requiredPaths": ["/approval/status"],
+      "recommendedPaths": ["/approval/workflowId", "/approval/approvers"]
+    },
+    {
+      "id": "DEPLOY-APPROVAL-002",
+      "description": "When the producer has declared that policy required approval, the event that carried the change out records the approval state it was carried out under.",
+      "rationale": "This is the rule the approvalRequired flag exists for, and it is deliberately about the executing event rather than the approving one: the question a review asks is not whether an approval exists somewhere but whether the change that actually reached the environment was covered by it. Requiring the status rather than an approved status is intentional. A change executed while approval was still pending is a control bypass, and the specification requires producers to record that honestly rather than suppress it; a rule that only accepted `approved` would make the most important event in the trail unrepresentable and would be met by omitting the flag instead.",
+      "severity": "error",
+      "events": [
+        "deployment.release.deploy",
+        "deployment.release.promote",
+        "deployment.release.rollback",
+        "deployment.release.cancel",
+        "deployment.infrastructure.apply",
+        "configuration.setting.create",
+        "configuration.setting.update",
+        "configuration.setting.delete",
+        "configuration.secret.rotate",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update"
+      ],
+      "when": {
+        "path": "/metadata/deployment/approvalRequired",
+        "equals": true
+      },
+      "requiredPaths": ["/approval/status"],
+      "recommendedPaths": ["/change/ticketId"]
+    },
+    {
+      "id": "DEPLOY-EMERGENCY-001",
+      "description": "A change the producer has flagged as bypassing the normal change path is justified.",
+      "rationale": "An emergency change, a break-glass repair and an overridden pipeline gate are the same fact from an audit point of view: the controls that normally govern change were not applied, by a decision someone made at the time. That decision is the thing a post-incident review needs and the thing nobody writes down afterwards, because the people involved were busy. The profile does not define when a change may bypass the path, and it does not require the bypass to have been approved; it requires the reason to exist while the answer is still known. The incident the change responded to and any retrospective approval are recommended for the same reason.",
+      "severity": "error",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "when": {
+        "path": "/metadata/deployment/emergency",
+        "equals": true
+      },
+      "requiredPaths": ["/reason"],
+      "recommendedPaths": ["/approval", "/change/incidentId"]
+    },
+    {
+      "id": "DEPLOY-FAILURE-001",
+      "description": "A change that failed records the state the target was left in.",
+      "rationale": "A failed change is not self-describing. `outcome: failure` says the operation did not complete; it does not say whether the target was left untouched, left half-updated, or automatically reverted, and those three answers call for completely different responses. The state is the one fact only the producer can supply and the one nobody can reconstruct from the outside once the pipeline has moved on. The profile requires the answer to be recorded and does not constrain the vocabulary used to express it, because what counts as partially applied depends on what was being changed. The core model already requires a sanitized error code on a failure; a human readable message is recommended in addition.",
+      "severity": "error",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "when": {
+        "path": "/event/outcome",
+        "equals": "failure"
+      },
+      "requiredMetadata": [
+        {
+          "path": "/deployment/resultingState",
+          "type": "string"
+        }
+      ],
+      "recommendedPaths": ["/event/error/message"]
+    },
+    {
+      "id": "DEPLOY-FAILURE-002",
+      "description": "A change that succeeded for some targets and failed for others records the state the targets were left in.",
+      "rationale": "A deployment across many instances is the clearest case in the model for `outcome: partial`, and it is also the case where the resulting state matters most: a partially applied change means two versions are serving at once, which is a configuration nobody designed and nobody tested. This rule is a duplicate of DEPLOY-FAILURE-001 with a different condition because the v0.1 rule language allows exactly one equality condition per rule and has no disjunction. Stating the requirement twice is preferred to stating it once and quietly leaving the partial case ungoverned.",
+      "severity": "error",
+      "events": [
+        "change.request.approve",
+        "change.request.cancel",
+        "change.request.close",
+        "change.request.create",
+        "change.request.reject",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update",
+        "configuration.secret.rotate",
+        "configuration.setting.create",
+        "configuration.setting.delete",
+        "configuration.setting.update"
+      ],
+      "eventPrefixes": ["deployment.release.", "deployment.infrastructure."],
+      "when": {
+        "path": "/event/outcome",
+        "equals": "partial"
+      },
+      "requiredMetadata": [
+        {
+          "path": "/deployment/resultingState",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "DEPLOY-AUTOMATION-001",
+      "description": "When automation carried the change out, the principal it acted for should be named in `subject` and the transfer of authority in `delegation`.",
+      "rationale": "Automation performs most material change, so the actor on a deployment event is usually a service and the person who decided the change should happen is not in the event at all. The core model can express that in two ways, and this profile picks one: the human author is the `subject`, the service is the `actor`, and `delegation` says how authority moved between them. Recording the author in metadata would work for one product and be unreadable across two. It is a recommendation rather than a requirement because unattended automation such as drift correction or a scheduled reconciliation genuinely has no human author, and the resulting warning is the correct signal for a reviewer rather than a defect.",
+      "severity": "warning",
+      "events": [
+        "deployment.release.deploy",
+        "deployment.release.promote",
+        "deployment.release.rollback",
+        "deployment.release.cancel",
+        "deployment.infrastructure.apply",
+        "configuration.setting.create",
+        "configuration.setting.update",
+        "configuration.setting.delete",
+        "configuration.secret.rotate",
+        "configuration.feature.toggle",
+        "configuration.policy.update",
+        "configuration.retention.update"
+      ],
+      "when": {
+        "path": "/actor/type",
+        "equals": "service"
+      },
+      "recommendedPaths": ["/subject", "/delegation"]
+    }
+  ]
+}

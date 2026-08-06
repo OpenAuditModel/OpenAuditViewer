@@ -1,0 +1,10 @@
+# Normalize line endings so the vendored schema, the profiles and the generated
+# validator are byte-identical on every platform. `npm run sync-vendored`
+# compares bytes, so a platform-dependent checkout would report false changes.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.icns binary

@@ -1,0 +1,178 @@
+{
+  "profileVersion": "0.1",
+  "name": "backup-and-recovery",
+  "version": "0.1",
+  "status": "experimental",
+  "coreVersions": ["0.1"],
+  "title": "Backup and Recovery Profile",
+  "description": "Additional conformance requirements for backup, snapshot, restore, recovery and failover audit events: creating and verifying recovery points, deleting and expiring them, restoring data, moving service between sites, and changing the policy that decides what is protected. Every requirement adds to the OpenAuditModel Core Specification; none relaxes it. Data-plane events such as chunk writes, progress reports and replication heartbeats are deliberately not governed.",
+  "rules": [
+    {
+      "id": "BACKUP-CORE-001",
+      "description": "Every governed backup, snapshot, restore, recovery or backup-policy operation records the authorization decision that permitted it.",
+      "rationale": "Backup and recovery tooling holds standing access to the most complete copy of an organization's data and to the switch that moves production between sites. Without a recorded decision, nothing in the trail separates an operation a policy permitted from one that ran because the backup service could. An operation performed by a scheduler is not exempt: it records the decision the schedule represents, or `not-applicable` where the producer made no decision at all, so that the absence of a control is stated rather than inferred from a missing field.",
+      "severity": "error",
+      "events": [
+        "backup.create",
+        "backup.complete",
+        "backup.verify",
+        "backup.delete",
+        "backup.expire",
+        "snapshot.create",
+        "snapshot.delete",
+        "restore.start",
+        "restore.complete",
+        "recovery.start",
+        "recovery.complete",
+        "recovery.failover",
+        "recovery.failback"
+      ],
+      "eventPrefixes": ["backup.policy."],
+      "requiredPaths": ["/authorization"]
+    },
+    {
+      "id": "BACKUP-CORE-002",
+      "description": "A governed operation should record why it happened and how it correlates with the wider recovery workflow.",
+      "rationale": "Backup and recovery operations are multi-stage by nature: a restore is a start and a completion, a failover is a sequence across storage, database and traffic layers, and each stage is usually emitted by a different component. A correlation identifier is what turns those events back into one operation. It is recommended rather than required because correlation infrastructure is not universal, and an appliance that emits events with no request context would otherwise be pushed to invent one. A justification is recommended everywhere and required on the operations that destroy or move data.",
+      "severity": "warning",
+      "events": [
+        "backup.create",
+        "backup.complete",
+        "backup.verify",
+        "backup.delete",
+        "backup.expire",
+        "snapshot.create",
+        "snapshot.delete",
+        "restore.start",
+        "restore.complete",
+        "recovery.start",
+        "recovery.complete",
+        "recovery.failover",
+        "recovery.failback"
+      ],
+      "eventPrefixes": ["backup.policy."],
+      "recommendedPaths": ["/reason", "/request/correlationId"]
+    },
+    {
+      "id": "BACKUP-SET-001",
+      "description": "A backup lifecycle event identifies the backup copy it acted on and the kind of copy it is.",
+      "rationale": "An identifier is what ties the event to the copy it describes; without it the trail records that a backup happened but not which one, and a later question about a specific recovery point has no answer. The kind of copy matters just as much, because a full, incremental, differential or transaction-log copy carry different consequences: deleting a full copy can invalidate every incremental that depends on it, while deleting one incremental usually does not. A reviewer cannot infer either fact from the event name.",
+      "severity": "error",
+      "events": [
+        "backup.create",
+        "backup.complete",
+        "backup.verify",
+        "backup.delete",
+        "backup.expire"
+      ],
+      "requiredMetadata": [
+        { "path": "/backup/backupId", "type": "string" },
+        { "path": "/backup/backupType", "type": "string" }
+      ],
+      "recommendedPaths": ["/metadata/backup/retentionClass"]
+    },
+    {
+      "id": "BACKUP-SET-002",
+      "description": "A backup run that completed successfully records the point in time the copy represents.",
+      "rationale": "A backup is only meaningful as a position on a timeline. Without the recovery point, the trail can say a copy exists but not what state it holds, and the question every recovery review begins with — how much data would be lost by restoring this copy — is unanswerable. The requirement is conditional on a successful outcome because a failed run produces no recovery point, and a rule that demanded one would force producers to fabricate a value for the failure case. The profile checks that the field is present and is a string; it cannot check that it is a valid timestamp or that it precedes the event time.",
+      "severity": "error",
+      "events": ["backup.complete"],
+      "when": { "path": "/event/outcome", "equals": "success" },
+      "requiredMetadata": [{ "path": "/backup/recoveryPoint", "type": "string" }],
+      "recommendedPaths": ["/metadata/backup/retentionClass"]
+    },
+    {
+      "id": "BACKUP-VERIFY-001",
+      "description": "A backup verification event records the verdict it reached about the copy.",
+      "rationale": "`event.outcome` says whether the verification ran; it does not say what the verification found. A check that completed successfully and proved the copy restorable, and a check that completed successfully and found it corrupt, are both `outcome: success`, and conflating them turns a verification programme into a record that jobs executed. The separate verdict is the only field that distinguishes an organization that tests its backups from one that tests whether its test harness runs. The profile does not fix the vocabulary of verdicts, because what verification means ranges from a checksum comparison to a full restore rehearsal.",
+      "severity": "error",
+      "events": ["backup.verify"],
+      "requiredMetadata": [{ "path": "/backup/verificationStatus", "type": "string" }],
+      "recommendedPaths": ["/evidence", "/metadata/backup/recoveryPoint"]
+    },
+    {
+      "id": "BACKUP-DELETE-001",
+      "description": "Deleting a backup copy or a snapshot before its retention has elapsed is justified.",
+      "rationale": "Deleting a recovery point removes the only means of returning to the state it held, and it is the operation an audit trail is least able to reconstruct afterwards, because the evidence is precisely what was removed. It is also the operation an attacker performs before the one they want to hide. A stated justification is what separates a deliberate disposal from destruction of evidence, and it must be recorded at the moment of deletion because there is nothing left to ask afterwards. Approval is recommended rather than required: many deployments legitimately let an owner remove a failed or superseded copy.",
+      "severity": "error",
+      "events": ["backup.delete", "snapshot.delete"],
+      "requiredPaths": ["/reason"],
+      "recommendedPaths": ["/approval", "/metadata/backup/retentionClass"]
+    },
+    {
+      "id": "BACKUP-EXPIRE-001",
+      "description": "A retention-driven expiry records the retention class that disposed of the copy.",
+      "rationale": "An expiry claims that a copy was removed because a policy said its time was up, and that claim is the entire justification for the event. Recording the retention class is what makes the claim checkable: it lets a reviewer test the disposal against the policy that supposedly drove it, and it makes a deletion recorded under the wrong name visible, because an operator-initiated removal dressed as an expiry has no class to point at. Retention metadata is recommended across the rest of this profile and required only here, where it is the operation's reason for existing.",
+      "severity": "error",
+      "events": ["backup.expire"],
+      "requiredMetadata": [{ "path": "/backup/retentionClass", "type": "string" }]
+    },
+    {
+      "id": "BACKUP-SNAPSHOT-001",
+      "description": "A snapshot event identifies the snapshot it created or removed.",
+      "rationale": "Snapshots are the recovery point people actually reach for, because they are cheap enough to take before every risky change and fast enough to restore from. That also makes them numerous, and a snapshot event without an identifier is indistinguishable from every other snapshot event on the same resource. The identifier is what allows a restore to be traced back to the copy it used, and a deletion to be traced to the copy that is now gone.",
+      "severity": "error",
+      "events": ["snapshot.create", "snapshot.delete"],
+      "requiredMetadata": [{ "path": "/backup/snapshotId", "type": "string" }],
+      "recommendedPaths": ["/metadata/backup/recoveryPoint", "/metadata/backup/retentionClass"]
+    },
+    {
+      "id": "BACKUP-RESTORE-001",
+      "description": "A restore records why it was performed, which operation it belongs to, which copy it read from and the point in time it restored to.",
+      "rationale": "A restore overwrites live data with older data, so it is simultaneously a data-loss event and a recovery: everything written between the recovery point and the restore is discarded. Three facts make it reviewable and none can be reconstructed later. The source names the copy that was trusted, which is what an investigation needs when the copy turns out to have been compromised. The recovery point bounds what was lost. The justification separates a disaster recovery from a quiet reversal of someone else's work — the single most common way a restore is misused. The restore identifier ties the start and the completion into one operation across the components that emit them.",
+      "severity": "error",
+      "events": ["restore.start", "restore.complete"],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [
+        { "path": "/backup/restoreId", "type": "string" },
+        { "path": "/backup/sourceId", "type": "string" },
+        { "path": "/backup/recoveryPoint", "type": "string" }
+      ],
+      "recommendedPaths": ["/approval", "/request/correlationId"]
+    },
+    {
+      "id": "BACKUP-RECOVERY-001",
+      "description": "A recovery or failover event identifies the recovery operation it belongs to.",
+      "rationale": "A recovery is never one event. Declaring it, moving storage, promoting a replica, redirecting traffic and standing the original site back up are separate operations, usually in separate systems, often hours apart and frequently performed by different people under pressure. The recovery identifier is what makes them one operation rather than an unexplained sequence, and it is the field a post-incident review depends on to reconstruct the order in which decisions were taken.",
+      "severity": "error",
+      "events": ["recovery.start", "recovery.complete", "recovery.failover", "recovery.failback"],
+      "requiredMetadata": [{ "path": "/backup/recoveryId", "type": "string" }],
+      "recommendedPaths": ["/request/correlationId", "/metadata/backup/recoveryPoint"]
+    },
+    {
+      "id": "BACKUP-FAILOVER-001",
+      "description": "A failover or failback records where service was moved to and why it was moved.",
+      "rationale": "A failover moves production service somewhere else. Without the destination the event says service moved but not where, which is useless during the incident and worse afterwards, when the question is which site was serving traffic at a given moment. Without a reason, a rehearsed drill, a planned maintenance move and an emergency response to an outage are the same event, and they demand entirely different scrutiny. The destination is recorded as a logical scope — a site, region, cluster or replica name — never as an endpoint, URL or connection string.",
+      "severity": "error",
+      "events": ["recovery.failover", "recovery.failback"],
+      "requiredPaths": ["/reason"],
+      "requiredMetadata": [{ "path": "/backup/targetScope", "type": "string" }],
+      "recommendedPaths": ["/approval", "/request/correlationId"]
+    },
+    {
+      "id": "BACKUP-APPROVAL-001",
+      "description": "When the producer declares that local policy required approval, the operation carries the approval record.",
+      "rationale": "This profile does not decide which deployments need an approval before a destructive deletion, a production restore or a failover; that is an organizational judgement, and a rule that imposed one answer would describe a single company's process and be switched off everywhere else. The producer declares the answer, and the profile enforces the consequence: an event that states approval was required and carries no approval record documents an operation performed without the control its own system said was needed. That gap is exactly what a review is looking for, and it is invisible unless the declaration and the record are held to each other.",
+      "severity": "error",
+      "events": [
+        "backup.delete",
+        "snapshot.delete",
+        "restore.start",
+        "recovery.failover",
+        "recovery.failback"
+      ],
+      "when": { "path": "/metadata/backup/approvalRequired", "equals": true },
+      "requiredPaths": ["/approval"]
+    },
+    {
+      "id": "BACKUP-POLICY-001",
+      "description": "A change to a backup policy records the policy, what changed and why.",
+      "rationale": "A backup policy decides what is protected, how often and for how long, so editing it changes future recoverability without touching any data. The damage surfaces only when a recovery is attempted, which may be months later, and by then the event that caused it is one line in a change log. Recording the transition in `change` is what makes it possible to say what protection was reduced rather than merely that a policy was edited, and the justification is what distinguishes a deliberate cost decision from a silent weakening of the organization's ability to recover.",
+      "severity": "error",
+      "eventPrefixes": ["backup.policy."],
+      "requiredPaths": ["/change", "/reason"],
+      "requiredMetadata": [{ "path": "/backup/policyId", "type": "string" }],
+      "recommendedPaths": ["/approval", "/metadata/backup/retentionClass"]
+    }
+  ]
+}

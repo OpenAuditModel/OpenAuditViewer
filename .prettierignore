@@ -1,0 +1,15 @@
+node_modules/
+dist/
+demo-logs/
+src-tauri/target/
+src-tauri/gen/
+package-lock.json
+src-tauri/Cargo.lock
+
+# Vendored from the canonical repository; formatting differences would show up
+# as spurious changes in `npm run sync-vendored`.
+src/schema/audit-event.schema.json
+src/profiles/
+
+# Generated.
+src/schema/validate.generated.js
