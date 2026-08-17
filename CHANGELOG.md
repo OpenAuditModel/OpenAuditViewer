@@ -9,6 +9,8 @@ as such.
 
 ## Unreleased
 
+## 0.2.0 - 2026-08-17
+
 ### Added — reading is bounded, and every bound is reported
 
 An oversized or hostile archive cannot exhaust the window: JSON Lines files are streamed a line at a

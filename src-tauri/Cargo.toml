@@ -1,6 +1,6 @@
 [package]
 name = "openaudit-viewer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local desktop viewer for OpenAuditModel-conformant audit logs"
 authors = ["OpenAuditModel"]
 edition = "2021"

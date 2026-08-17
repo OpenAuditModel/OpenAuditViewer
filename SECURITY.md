@@ -2,9 +2,10 @@
 
 ## Supported versions
 
-| Version | Status                                 |
-| ------- | -------------------------------------- |
-| 0.1     | Experimental. Fixes applied to `main`. |
+| Version | Status                                                |
+| ------- | ----------------------------------------------------- |
+| 0.2.x   | Current release. Fixes applied to `main`.             |
+| 0.1.x   | Superseded. No fixes; upgrade to the current release. |
 
 OpenAuditViewer is **experimental**. It has not been externally audited, and there is no long-term
 support commitment.
