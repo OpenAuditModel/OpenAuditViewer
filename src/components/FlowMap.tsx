@@ -1,23 +1,23 @@
 /**
- * Aggregated service flow map, in the spirit of an APM topology view: every
- * application observed in any flow is a node with a health ring, every
- * observed transition is a directed edge carrying its own numbers —
- * transition count, median gap, failure count. Edge thickness scales with
- * volume. Selecting a trace in the list highlights the path it actually
- * took; clicking a node drills into that application's events.
+ * Service flow map of the selected flow, in the spirit of an APM topology
+ * view: each application the flow passed through is a node with a health
+ * ring, each transition between two of them is a directed edge carrying its
+ * own numbers — transition count, median gap, failure count. Clicking a node
+ * drills into that application's events.
  *
- * Everything drawn here is observed, not inferred: an edge exists only
- * where two consecutive events of one flow sit in different applications.
+ * Scoped to the selected flow, and every figure with it. A map of all flows
+ * at once was tried and taken out: it drew applications in columns whether or
+ * not they had ever exchanged anything, so a folder holding twenty
+ * applications in unrelated flows put strangers side by side, and its
+ * folder-wide numbers sat directly above one flow's detail as if they
+ * described it.
+ *
+ * Everything drawn here is observed, not inferred: an edge exists only where
+ * two consecutive events of the flow sit in different applications.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { applicationColor } from "../lib/app-color";
-import {
-  buildFlowTopology,
-  formatDuration,
-  pairKey,
-  type FlowEdge,
-  type TraceGroup,
-} from "../lib/trace";
+import { buildFlowTopology, formatDuration, pairKey, type TraceGroup } from "../lib/trace";
 import {
   NODE_R,
   buildNodePositions,
@@ -31,13 +31,13 @@ import {
 import { useNodeDrag } from "../hooks/useNodeDrag";
 
 interface Props {
-  readonly groups: readonly TraceGroup[];
-  readonly selectedKey: string | undefined;
+  /** The flow to draw. Selecting another in the list redraws the map for it. */
+  readonly group: TraceGroup;
   readonly onSelectApp: (name: string) => void;
 }
 
-export function FlowMap({ groups, selectedKey, onSelectApp }: Props) {
-  const topology = useMemo(() => buildFlowTopology(groups), [groups]);
+export function FlowMap({ group, onSelectApp }: Props) {
+  const topology = useMemo(() => buildFlowTopology([group]), [group]);
   const reducedMotion = useMemo(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     [],
@@ -91,12 +91,14 @@ export function FlowMap({ groups, selectedKey, onSelectApp }: Props) {
     [autoPositions, drag.overrides],
   );
 
+  // A flow that never left one application has no transition to draw. Saying
+  // so beats an empty panel, which reads as something that failed to load.
   if (topology.edges.length === 0) {
-    return null;
-  }
-
-  function isActive(edge: FlowEdge): boolean {
-    return selectedKey === undefined || edge.groupKeys.has(selectedKey);
+    return (
+      <div className="flow-map flow-map-empty">
+        This flow stays within one application, so there is no transition to draw.
+      </div>
+    );
   }
 
   return (
@@ -112,7 +114,7 @@ export function FlowMap({ groups, selectedKey, onSelectApp }: Props) {
         width={renderSize.width}
         height={renderSize.height}
         role="img"
-        aria-label="Aggregated application flow map"
+        aria-label={`Flow map of the selected flow: ${topology.apps.length} applications`}
       >
         <defs>
           <marker
@@ -136,13 +138,12 @@ export function FlowMap({ groups, selectedKey, onSelectApp }: Props) {
           }
           const backward = to.x <= from.x;
           const { path, mid } = edgeGeometry(from, to, backward);
-          const active = isActive(edge);
           const color = edge.failures > 0 ? "var(--bad)" : applicationColor(edge.from);
-          const pulses = !active || reducedMotion ? 0 : Math.min(edge.count, 3);
+          const pulses = reducedMotion ? 0 : Math.min(edge.count, 3);
           const duration = backward ? 3.8 : 3;
 
           return (
-            <g key={pairKey(edge.from, edge.to)} className={active ? "flow-g" : "flow-g dimmed"}>
+            <g key={pairKey(edge.from, edge.to)} className="flow-g">
               <path
                 d={path}
                 className={backward ? "flow-edge backward" : "flow-edge"}
@@ -201,7 +202,7 @@ export function FlowMap({ groups, selectedKey, onSelectApp }: Props) {
               aria-label={`Filter events to ${app.name}`}
             >
               <title>
-                {app.name}: {app.events} flow event{app.events === 1 ? "" : "s"}
+                {app.name}: {app.events} event{app.events === 1 ? "" : "s"} in this flow
                 {app.failures > 0 ? `, ${app.failures} failures` : ", no failures"} — click to open,
                 drag to rearrange
               </title>

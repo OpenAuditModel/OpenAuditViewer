@@ -20,7 +20,9 @@ import {
   mergePositions,
 } from "../flow-layout";
 import type { FlowTopology } from "../trace";
-import type { LoadedEvent } from "../types";
+import { displayPath } from "../paths";
+import { filesNeverOpened } from "../summary";
+import type { LoadedEvent, LoadSummary } from "../types";
 
 function row(overrides: Partial<LoadedEvent>): LoadedEvent {
   return {
@@ -205,5 +207,58 @@ describe("flow map layout", () => {
     const forward = edgeGeometry(to, from, false);
     expect(backward.mid.y).toBeGreaterThan(from.y);
     expect(forward.mid.y).toBeLessThan(from.y);
+  });
+});
+
+describe("paths shown in load notices", () => {
+  it("shows a path inside the opened folder relative to it", () => {
+    expect(displayPath("/logs/nested/events.jsonl", "/logs")).toBe("nested/events.jsonl");
+    // Backslashes doubled deliberately: the separator under test is a single
+    // backslash, and "D:\logs" would reach displayPath as "D:logs".
+    expect(displayPath("D:\\logs\\nested\\events.jsonl", "D:\\logs")).toBe("nested\\events.jsonl");
+  });
+
+  it("leaves a path outside the opened folder, or with no folder, as it is", () => {
+    expect(displayPath("/elsewhere/a.json", "/logs")).toBe("/elsewhere/a.json");
+    expect(displayPath("/logs/a.json")).toBe("/logs/a.json");
+  });
+
+  // The folder itself is what failed — a relative path would be the empty
+  // string, which names nothing.
+  it("keeps the folder's own path when the folder is the subject", () => {
+    expect(displayPath("/logs", "/logs")).toBe("/logs");
+  });
+});
+
+describe("files a load never opened", () => {
+  const summary = (overrides: Partial<LoadSummary>): LoadSummary => ({
+    filesRead: 0,
+    filesFound: 0,
+    filesFailed: [],
+    filesSkipped: [],
+    directoriesSkipped: [],
+    directoriesFailed: [],
+    truncated: false,
+    eventLimit: 100_000,
+    ...overrides,
+  });
+
+  it("counts the files left after a load stopped at the ceiling", () => {
+    expect(filesNeverOpened(summary({ filesFound: 12, filesRead: 3, truncated: true }))).toBe(9);
+  });
+
+  it("does not count a declined or unreadable file as one it never opened", () => {
+    const stopped = summary({
+      filesFound: 5,
+      filesRead: 1,
+      filesSkipped: [{ path: "/logs/big.json", reason: "too large" }],
+      filesFailed: [{ path: "/logs/bad.json", reason: "input/output error" }],
+      truncated: true,
+    });
+    expect(filesNeverOpened(stopped)).toBe(2);
+  });
+
+  it("is zero for a load that read everything it found", () => {
+    expect(filesNeverOpened(summary({ filesFound: 4, filesRead: 4 }))).toBe(0);
   });
 });

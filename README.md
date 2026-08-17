@@ -179,8 +179,11 @@ binary for a platform nobody has tried would be a claim rather than a release.
 - No signature verification, as described above.
 - Everything read stays in memory, so loading is bounded: JSON Lines files are streamed a line at a
   time, a single `.json` document over 32 MB is declined rather than read, and a load stops at
-  100,000 events. Each of those is reported on screen — the app will not show you part of a folder
-  without saying so — but it does mean a very large archive cannot be viewed whole.
+  100,000 events. Each of those is reported on screen — as is every file that could not be read and
+  every directory that was not entered — but it does mean a very large archive cannot be viewed
+  whole.
+- Verifying chains is automatic only while a folder holds fewer than 5,000 chain members. Above
+  that it is a button, like the per-event digest sweep, rather than work every load pays for.
 - Loading still reads and validates every file before the table fills in. The table virtualizes, so
   scrolling stays smooth, but the initial pass over a big folder takes time.
 - Only JSON and JSON Lines are read; any other export has to be converted first.

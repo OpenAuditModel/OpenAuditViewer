@@ -34,9 +34,9 @@ export interface LoadedEvent {
   readonly privacyFindings: readonly import("./privacy/types").PrivacyFinding[];
 }
 
-/** A file the loader did not turn into events, and why. */
-export interface FileNotice {
-  readonly file: string;
+/** A path the loader did not turn into events, and why. */
+export interface PathNotice {
+  readonly path: string;
   readonly reason: string;
 }
 
@@ -46,9 +46,16 @@ export interface LoadSummary {
   /** Recognized files found in the folder, including any not read. */
   readonly filesFound: number;
   /** Files that could not be read at all. */
-  readonly filesFailed: readonly FileNotice[];
+  readonly filesFailed: readonly PathNotice[];
   /** Files declined before reading, for their size. */
-  readonly filesSkipped: readonly FileNotice[];
+  readonly filesSkipped: readonly PathNotice[];
+  /** Directories deliberately not descended into: dependency and build trees,
+   * and anything past the depth limit. Expected rather than alarming, but
+   * counted, because a folder the walk never entered can hold audit logs. */
+  readonly directoriesSkipped: readonly PathNotice[];
+  /** Directories that could not be listed at all. The rest of the folder is
+   * still loaded: one unreadable subdirectory does not lose the others. */
+  readonly directoriesFailed: readonly PathNotice[];
   /** True when loading stopped at the event ceiling: the folder holds more. */
   readonly truncated: boolean;
   readonly eventLimit: number;

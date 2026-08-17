@@ -62,11 +62,9 @@ export function Traces({ events, onOpenEvent, onSelectApplication }: Props) {
 
   return (
     <div className="traces">
-      <FlowMap
-        groups={groups}
-        selectedKey={selected === undefined ? undefined : groupIdentity(selected)}
-        onSelectApp={onSelectApplication}
-      />
+      {selected === undefined ? null : (
+        <FlowMap group={selected} onSelectApp={onSelectApplication} />
+      )}
 
       <div className="traces-body">
         <div className="trace-list">

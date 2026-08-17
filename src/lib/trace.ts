@@ -204,8 +204,6 @@ export interface FlowEdge {
   readonly failures: number;
   /** Median wall-clock gap between the two sides of the transition. */
   readonly medianDeltaMs: number;
-  /** Keys of the trace groups this edge was observed in, for highlighting. */
-  readonly groupKeys: ReadonlySet<string>;
 }
 
 export interface FlowTopology {
@@ -227,17 +225,18 @@ function median(values: readonly number[]): number {
 }
 
 /**
- * Aggregates every flow into one service topology: which applications talk
- * to which, how often, how fast, and how healthily. An edge exists only
- * where two consecutive events of one flow sit in different applications —
- * the map states observed transitions, never inferred architecture.
+ * Builds the service topology of the flows given: which applications talk to
+ * which, how often, how fast, and how healthily. An edge exists only where
+ * two consecutive events of one flow sit in different applications — the map
+ * states observed transitions, never inferred architecture.
+ *
+ * The viewer passes one flow, so every figure describes that flow. Passing
+ * several aggregates them, which is why the numbers are counts and medians
+ * rather than single observations.
  */
 export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
   const appStats = new Map<string, { depth: number; events: number; failures: number }>();
-  const edgeStats = new Map<
-    string,
-    { count: number; failures: number; deltas: number[]; groupKeys: Set<string> }
-  >();
+  const edgeStats = new Map<string, { count: number; failures: number; deltas: number[] }>();
 
   for (const group of groups) {
     for (const [index, application] of group.applications.entries()) {
@@ -266,18 +265,12 @@ export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
       if (previous.application === current.application) continue;
 
       const key = pairKey(previous.application, current.application);
-      const entry = edgeStats.get(key) ?? {
-        count: 0,
-        failures: 0,
-        deltas: [],
-        groupKeys: new Set<string>(),
-      };
+      const entry = edgeStats.get(key) ?? { count: 0, failures: 0, deltas: [] };
       entry.count += 1;
       if (current.row.outcome === "failure") {
         entry.failures += 1;
       }
       entry.deltas.push(Math.max(0, current.timeMs - previous.timeMs));
-      entry.groupKeys.add(groupIdentity(group));
       edgeStats.set(key, entry);
     }
   }
@@ -299,7 +292,6 @@ export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
       count: entry.count,
       failures: entry.failures,
       medianDeltaMs: median(entry.deltas),
-      groupKeys: entry.groupKeys,
     };
   });
 
