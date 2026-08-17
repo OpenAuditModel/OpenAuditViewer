@@ -3,12 +3,13 @@
  * selected. All numbers here are computed from data already in memory —
  * nothing is re-read from disk and nothing leaves the machine.
  *
- * Chain verification and the digest sweep run here asynchronously: chains
- * automatically (there are usually few chain members), the full digest sweep
- * only on request, since hashing every event of a large folder is work the
- * user should ask for rather than pay on every load.
+ * Chain verification and the digest sweep run here asynchronously, and both
+ * are bounded by the same rule: hashing every event of a large folder is work
+ * the user should ask for rather than pay on every load. The digest sweep
+ * always waits for a click; chain verification runs on open only while the
+ * chains are small enough for that to cost nothing worth noticing.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LoadedEvent, LoadSummary } from "../lib/types";
 import { readIntegrity, verifyEventIntegrity } from "../lib/integrity/verify-event";
 import { verifyChains } from "../lib/integrity/chain";
@@ -49,6 +50,20 @@ function shortChainId(chainId: string): string {
   return chainId.length > 12 ? `${chainId.slice(0, 12)}…` : chainId;
 }
 
+/**
+ * Chain members verified without being asked.
+ *
+ * Verification digests every member of every chain, in parallel, through Web
+ * Crypto. Measured on a sealed chain outside the webview it costs about 55 µs
+ * a member and scales linearly, so this limit is roughly a quarter-second
+ * there — and a webview on a modest machine is slower, which is what the
+ * margin is for: past about a second a delay stops feeling like the folder
+ * simply opened. A load that reached the event ceiling would be twenty times
+ * this, and the answer for that is the one the digest sweep already gives:
+ * offer the work, and let the user decide when to spend it.
+ */
+const AUTOMATIC_CHAIN_LIMIT = 5_000;
+
 export function Overview({ events, summary, onSelectApplication }: Props) {
   const [chainReport, setChainReport] = useState<ChainReport | undefined>();
   const [chainsVerifying, setChainsVerifying] = useState(false);
@@ -74,22 +89,32 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
     [events],
   );
 
+  const chainInputs = useMemo(
+    () =>
+      chainMembers.map((row) => ({
+        label: row.rowId,
+        event: row.event as Record<string, unknown>,
+      })),
+    [chainMembers],
+  );
+
   useEffect(() => {
     setSweep({ status: "idle" });
 
-    if (chainMembers.length === 0) {
+    // Nothing to verify, or too much to verify unasked. Either way the report
+    // from a folder opened earlier has to go: leaving it on screen beside a
+    // different folder's events would describe data that is no longer shown.
+    if (chainInputs.length === 0 || chainInputs.length > AUTOMATIC_CHAIN_LIMIT) {
       setChainReport(undefined);
+      // Nothing is running for this folder — including anything a previous
+      // folder left running, whose result this component will discard.
+      setChainsVerifying(false);
       return;
     }
 
     let cancelled = false;
     setChainsVerifying(true);
-    void verifyChains(
-      chainMembers.map((row) => ({
-        label: row.rowId,
-        event: row.event as Record<string, unknown>,
-      })),
-    ).then((report) => {
+    void verifyChains(chainInputs).then((report) => {
       if (!cancelled) {
         setChainReport(report);
         setChainsVerifying(false);
@@ -98,7 +123,29 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chainMembers]);
+  }, [chainInputs]);
+
+  // Which events are on screen right now. Work started on request runs for as
+  // long as it runs, and the user is free to open another folder meanwhile;
+  // whatever it computed then describes data nobody is looking at any more,
+  // and painting it over the new folder's numbers would be the app claiming
+  // something the events on screen do not say.
+  const onScreen = useRef(events);
+  useEffect(() => {
+    onScreen.current = events;
+  }, [events]);
+
+  /** Verifies chains a load was too large to verify on open. */
+  async function runChainVerification(): Promise<void> {
+    const requested = events;
+    setChainsVerifying(true);
+    const report = await verifyChains(chainInputs);
+    if (onScreen.current !== requested) {
+      return;
+    }
+    setChainReport(report);
+    setChainsVerifying(false);
+  }
 
   const applications = useMemo<AppRow[]>(() => {
     const byName = new Map<string, { count: number; invalid: number; findings: number }>();
@@ -141,11 +188,17 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
   const maxAppCount = applications[0]?.count ?? 1;
 
   async function runDigestSweep(): Promise<void> {
+    const requested = events;
     setSweep({ status: "running" });
     let verified = 0;
     const failed: { label: string; message: string }[] = [];
 
     for (const row of withHash) {
+      // Abandoned rather than finished when the folder it was started for is
+      // no longer the one on screen.
+      if (onScreen.current !== requested) {
+        return;
+      }
       const result = await verifyEventIntegrity(row.event, row.sourceFile, {
         validateSchema: false,
       });
@@ -320,6 +373,20 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
                   </span>
                 </div>
               ))}
+            </div>
+          ) : chainMembers.length > AUTOMATIC_CHAIN_LIMIT ? (
+            <div className="sweep-row">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void runChainVerification()}
+              >
+                Verify {chainMembers.length.toLocaleString()} chain members
+              </button>
+              <span className="detail-note-inline">
+                Not verified on open: this many events is work to ask for rather than pay for every
+                time a folder is opened.
+              </span>
             </div>
           ) : null}
 

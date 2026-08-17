@@ -1124,14 +1124,6 @@ body,
   display: block;
 }
 
-.flow-g {
-  transition: opacity 0.25s ease;
-}
-
-.flow-g.dimmed {
-  opacity: 0.22;
-}
-
 .flow-edge {
   fill: none;
   opacity: 0.6;
@@ -1162,6 +1154,12 @@ body,
 
 .flow-map {
   position: relative;
+}
+
+.flow-map-empty {
+  padding: 0.7rem 0.9rem;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .flow-map-reset {

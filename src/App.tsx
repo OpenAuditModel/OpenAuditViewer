@@ -6,6 +6,8 @@ import { Overview } from "./components/Overview";
 import { Traces } from "./components/Traces";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { exportRows, loadFolder, pickFolder } from "./lib/load";
+import { displayPath } from "./lib/paths";
+import { filesNeverOpened } from "./lib/summary";
 import { applyThemePreference, loadThemePreference } from "./lib/settings";
 import {
   ANY,
@@ -103,6 +105,20 @@ function App() {
 
   const validCount = events.filter((row) => row.valid).length;
 
+  // Everything in the picked folder that did not become events, in one place.
+  // A file declined for its size, a file that could not be read and a
+  // directory that could not be listed are the same thing to the person
+  // looking at the screen — something they pointed the app at is not here —
+  // so each is named, with the reason it is missing.
+  const notRead = summary
+    ? [...summary.filesSkipped, ...summary.filesFailed, ...summary.directoriesFailed]
+    : [];
+
+  // Files the load never got to, because it stopped at the ceiling first.
+  // Naming them all would be noise — there can be thousands — but saying how
+  // many there are keeps "this folder holds more" from being the only clue.
+  const filesUnopened = summary === undefined ? 0 : filesNeverOpened(summary);
+
   return (
     <div className="app">
       <header className="toolbar">
@@ -120,6 +136,19 @@ function App() {
             {events.length - validCount} invalid
             {summary.filesFailed.length > 0 ? ` · ${summary.filesFailed.length} unreadable` : ""}
             {summary.filesSkipped.length > 0 ? ` · ${summary.filesSkipped.length} too large` : ""}
+            {summary.directoriesSkipped.length > 0 ? (
+              // Expected rather than alarming — a repository root holds
+              // node_modules — so it is counted here rather than warned about.
+              // The title carries which ones, since a skipped directory can
+              // hold audit logs the user meant to open.
+              <span
+                title={summary.directoriesSkipped
+                  .map((notice) => `${displayPath(notice.path, folder)} — ${notice.reason}`)
+                  .join("\n")}
+              >
+                {` · ${summary.directoriesSkipped.length} folders skipped`}
+              </span>
+            ) : null}
           </span>
         ) : null}
         <button
@@ -142,18 +171,20 @@ function App() {
           Stopped at {summary.eventLimit.toLocaleString()} events — this folder holds more. What is
           shown below is the first {summary.eventLimit.toLocaleString()} read, not a sample of the
           whole: totals, chains and flows describe only that part.
+          {filesUnopened > 0
+            ? ` ${filesUnopened} of the ${summary.filesFound} files found were never opened.`
+            : ""}
         </p>
       ) : null}
 
-      {summary && summary.filesSkipped.length > 0 ? (
+      {notRead.length > 0 ? (
         <p className="load-warning">
-          {summary.filesSkipped.length} file
-          {summary.filesSkipped.length === 1 ? " was" : "s were"} not read:{" "}
-          {summary.filesSkipped
+          {notRead.length === 1 ? "One path was" : `${notRead.length} paths were`} not read:{" "}
+          {notRead
             .slice(0, 3)
-            .map((notice) => `${notice.file.split(/[/\\]/).pop()} (${notice.reason})`)
+            .map((notice) => `${displayPath(notice.path, folder)} (${notice.reason})`)
             .join("; ")}
-          {summary.filesSkipped.length > 3 ? ", and others" : ""}.
+          {notRead.length > 3 ? `, and ${notRead.length - 3} more` : ""}.
         </p>
       ) : null}
 
