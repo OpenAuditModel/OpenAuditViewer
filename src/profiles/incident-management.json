@@ -1,7 +1,7 @@
 {
   "profileVersion": "0.1",
   "name": "incident-management",
-  "version": "0.1",
+  "version": "0.2",
   "status": "experimental",
   "coreVersions": ["0.1"],
   "title": "Incident Management Profile",
@@ -18,17 +18,24 @@
         "corrective-action.verify",
         "incident.assignment.change",
         "incident.case.cancel",
+        "incident.cancel",
         "incident.case.close",
+        "incident.close",
         "incident.case.create",
+        "incident.create",
         "incident.case.reopen",
+        "incident.reopen",
         "incident.case.resolve",
+        "incident.resolve",
         "incident.major.declare",
         "incident.priority.change",
         "incident.rca.approve",
         "incident.rca.create",
         "incident.rca.update",
         "problem.case.close",
-        "problem.case.create"
+        "problem.close",
+        "problem.case.create",
+        "problem.create"
       ],
       "requiredPaths": ["/authorization"],
       "requiredMetadata": [
@@ -49,10 +56,15 @@
         "corrective-action.verify",
         "incident.assignment.change",
         "incident.case.cancel",
+        "incident.cancel",
         "incident.case.close",
+        "incident.close",
         "incident.case.create",
+        "incident.create",
         "incident.case.reopen",
+        "incident.reopen",
         "incident.case.resolve",
+        "incident.resolve",
         "incident.major.declare",
         "incident.priority.change",
         "incident.rca.approve",
@@ -60,7 +72,9 @@
         "incident.rca.update",
         "incident.sla.breach",
         "problem.case.close",
-        "problem.case.create"
+        "problem.close",
+        "problem.case.create",
+        "problem.create"
       ],
       "recommendedPaths": ["/request/correlationId", "/relatedResources"]
     },
@@ -69,7 +83,12 @@
       "description": "Raising a case should record how the condition was noticed, when it began, and how badly it hurt.",
       "rationale": "Detection time and business impact are known accurately only at the moment a case is opened, and are reconstructed badly or not at all afterwards. They are recommended rather than required because impact and urgency scales differ between organizations and some cases are raised by a customer with no measurable detection point, and a requirement that could not be met honestly would be satisfied with a placeholder instead.",
       "severity": "warning",
-      "events": ["incident.case.create", "problem.case.create"],
+      "events": [
+        "incident.case.create",
+        "incident.create",
+        "problem.case.create",
+        "problem.create"
+      ],
       "recommendedPaths": [
         "/reason",
         "/metadata/incident/detectedAt",
@@ -87,9 +106,13 @@
         "incident.assignment.change",
         "incident.major.declare",
         "incident.case.resolve",
+        "incident.resolve",
         "incident.case.close",
+        "incident.close",
         "incident.case.cancel",
+        "incident.cancel",
         "problem.case.close",
+        "problem.close",
         "corrective-action.close"
       ],
       "requiredPaths": ["/change"]
@@ -103,8 +126,11 @@
         "incident.priority.change",
         "incident.major.declare",
         "incident.case.close",
+        "incident.close",
         "incident.case.cancel",
+        "incident.cancel",
         "problem.case.close",
+        "problem.close",
         "corrective-action.close"
       ],
       "requiredPaths": ["/reason"]
@@ -116,7 +142,9 @@
       "severity": "error",
       "events": [
         "incident.case.create",
+        "incident.create",
         "problem.case.create",
+        "problem.create",
         "incident.priority.change",
         "incident.major.declare",
         "incident.sla.breach"
@@ -147,7 +175,7 @@
       "description": "Resolving a case records what kind of resolution it was.",
       "rationale": "A workaround, a permanent fix, a duplicate and a condition that disappeared on its own are four different outcomes with four different follow-up obligations, and a status of `resolved` collapses all of them into one word. The distinction is what tells a later reader whether the underlying fault is still present in production. The recommended fields point at the rest of the story: when the service was actually restored, and which corrective action carries the remaining work.",
       "severity": "error",
-      "events": ["incident.case.resolve"],
+      "events": ["incident.case.resolve", "incident.resolve"],
       "requiredMetadata": [
         {
           "path": "/incident/resolutionType",
@@ -167,8 +195,11 @@
       "severity": "error",
       "events": [
         "incident.case.close",
+        "incident.close",
         "incident.case.cancel",
+        "incident.cancel",
         "problem.case.close",
+        "problem.close",
         "corrective-action.close"
       ],
       "when": {
@@ -183,7 +214,7 @@
       "description": "Reopening a closed case is a new lifecycle transition, recorded with the transition it made and the reason it was made.",
       "rationale": "A reopen is the strongest evidence an incident trail can carry that a resolution was wrong, so it is the transition most worth recording well. It is treated as a new auditable step and nothing more: the earlier closure and any approval attached to it remain valid historical records of what was decided at that time, and this profile does not assert that a reopen retracts them or that a fresh approval is owed, because that is an organizational process this specification does not make. Reusing the original correlation identifier, recommended by INC-CORE-002, is what keeps the whole handling readable as one story rather than two unrelated cases.",
       "severity": "error",
-      "events": ["incident.case.reopen"],
+      "events": ["incident.case.reopen", "incident.reopen"],
       "requiredPaths": ["/change", "/reason"],
       "recommendedPaths": ["/evidence"]
     },
