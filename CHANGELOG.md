@@ -9,6 +9,25 @@ as such.
 
 ## Unreleased
 
+### Changed behaviour — the vendored incident-management profile moves to 0.2
+
+**Breaking** for anyone reading a folder of incident events: an event this viewer
+reported as `not-applicable` may now be reported as a violation.
+
+The canonical profile gained the two-segment twin of every `<domain>.case.<action>` selector, so a
+system that models an incident directly rather than as a separate _case_ record — emitting
+`incident.create` rather than `incident.case.create` — is governed instead of passed over. Seventeen
+selectors become twenty-four; the fifteen rules are unchanged, and no rule was added, removed or
+retargeted.
+
+Until this refresh the viewer and the `auditmodel` CLI disagreed about real events. On the reference
+204-event export the CLI reports fifteen violations where this viewer reported `not-applicable`, and
+verdict parity with the CLI is the whole of what this application claims. A viewer that is quietly
+more permissive than the CLI is a defect even when its answer looks friendlier.
+
+Data only: the profile introduces no rule key the evaluator does not implement, so nothing under
+`src/lib/` changed. `sync-vendored` reports one file updated and ten unchanged.
+
 ## 0.2.0 - 2026-08-17
 
 ### Added — reading is bounded, and every bound is reported
