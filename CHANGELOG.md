@@ -9,6 +9,8 @@ as such.
 
 ## Unreleased
 
+## 0.3.0 - 2026-09-01
+
 ### Changed behaviour — the vendored incident-management profile moves to 0.2
 
 **Breaking** for anyone reading a folder of incident events: an event this viewer
