@@ -29,6 +29,14 @@ npm run tauri build    # release binaries
 
 `npm run verify` before pushing. TypeScript is strict and CI treats a type error as a failure.
 
+**A desktop build goes through the Tauri CLI, never through `cargo` alone.** `cargo build --release`
+in `src-tauri/` produces a binary that compiles, launches, shows a window — and renders nothing,
+because whether the webview loads the bundled frontend or the dev server is decided by the Tauri
+CLI's environment rather than by the cargo profile. Built with bare cargo, the application points at
+`http://localhost:1420` and embeds no assets, so the window is white and the only clue is in the web
+inspector. `npm run tauri build` is what produces a real binary; `npm run tauri dev` is what pairs a
+debug build with the dev server it expects.
+
 ## What belongs here, and what does not
 
 **The viewer never transmits audit content.** There is no telemetry, no crash reporting, no update

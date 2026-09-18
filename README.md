@@ -117,6 +117,10 @@ npm run tauri build    # release binaries
 `npm run dev` runs the frontend alone in a browser, with no Rust prerequisites — useful when working
 on the interface. File loading needs the desktop shell.
 
+Build through the Tauri CLI rather than calling `cargo build` yourself: the CLI is what tells the
+application to load its bundled frontend instead of the development server, so a binary built with
+bare cargo opens a window and renders nothing.
+
 To have something to look at:
 
 ```bash
