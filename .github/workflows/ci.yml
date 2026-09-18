@@ -59,7 +59,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        # macOS proves the code compiles there. Nothing is published for it
+        # yet — the application has never been run on a Mac, and a release for
+        # a platform nobody has tried would be a claim rather than a release.
+        # Compiling is the cheapest half of finding that out.
+        os: [windows-latest, ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
 
@@ -85,8 +89,8 @@ jobs:
       - name: Build the desktop application
         run: npm run tauri build
 
-      # Windows only, deliberately. The Linux job exists to prove the code
-      # still compiles there; keeping its ~80 MB AppImage for a platform the
+      # Windows only, deliberately. The Linux and macOS jobs exist to prove the
+      # code still compiles there; keeping their bundles for platforms the
       # project does not publish, on every push, is storage spent on something
       # nobody is meant to download. The portable executable lives outside
       # `bundle/` because it is the compiled binary, not a packaged artifact.

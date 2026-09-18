@@ -9,6 +9,35 @@ as such.
 
 ## Unreleased
 
+### Added — a signed, notarized macOS build
+
+Releases now carry a universal disk image alongside the Windows executable. It is signed with a
+Developer ID certificate and notarized by Apple, which is the difference between an application that
+opens on a double click and one macOS refuses to open at all: an unsigned app downloaded from the
+internet is not merely warned about the way SmartScreen warns, it is blocked, and recent macOS
+versions removed the right-click escape hatch.
+
+**The release job proves it rather than assuming it.** After building, it mounts the image, runs
+`spctl --assess --type execute`, `codesign --verify --deep --strict` and `xcrun stapler validate`
+against the application inside, and fails the release if any of the three does. A notarization that
+silently did not happen produces an artifact that passes every earlier step and fails on the first
+machine that opens it.
+
+One image covers Apple Silicon and Intel. The signing material lives in a keychain created for the
+run and deleted at the end of it, and the notarization key is written to the runner's temporary
+directory and removed in the same step — both in an `always()` block, so a failed build does not
+leave them behind.
+
+CI also builds on `macos-latest` now. That job publishes nothing; it exists so that a compilation
+failure on macOS is found on the pull request rather than at the tag.
+
+The README said until now that macOS was not published because the application had never been run
+there, and that shipping a binary for a platform nobody has tried would be a claim rather than a
+release. It has now been run: built natively on an Apple Silicon Mac, pointed at a folder of 563
+files, and watched to report 811 events, the seven it could not read and the twenty-seven
+directories it did not enter — with the package's privacy and profile engines producing the same
+verdicts they produce everywhere else.
+
 ### Added — a differential parity suite against the published engines
 
 The README has claimed that this app answers the same as the `openauditmodel` CLI. That was an
