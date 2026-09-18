@@ -4,7 +4,7 @@
  * displays directly rather than re-reading the JSON on every render.
  */
 import { validateEvent } from "./schema";
-import { lintEvent } from "./privacy/lint-event";
+import { lintEvent } from "./engines";
 import type { LoadedEvent, SourceFormat } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -34,7 +34,13 @@ function buildRow(
       sourceFormat,
       event: null,
       valid: false,
-      errors: [{ path: "/", message: extra.forcedError ?? "could not be parsed as an event" }],
+      errors: [
+        {
+          path: "/",
+          message: extra.forcedError ?? "could not be parsed as an event",
+          keyword: "reader",
+        },
+      ],
       privacyFindings: [],
     };
   }

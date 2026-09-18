@@ -2,10 +2,13 @@
 
 Thank you for considering a contribution.
 
-This is a viewer, not a second implementation of the specification. The analysis it performs —
-schema validation, privacy linting, digest and chain verification, profile conformance — is ported
-from the [OpenAuditModel](https://github.com/OpenAuditModel/OpenAuditModel) conformance tooling and
-must keep giving the same answers. That constraint shapes most of the rules below.
+This is a viewer, not a second implementation of the specification. Privacy linting and profile
+conformance are imported from [OpenAuditModel](https://github.com/OpenAuditModel/OpenAuditModel)'s
+published conformance tooling — `@openauditmodel/cli`, pinned exactly — rather than reimplemented
+here. Schema validation uses that tooling's formatter over a validator compiled at build time, and
+integrity verification is the one part still carried locally, because Web Crypto is asynchronous
+where Node's hashing is not. All of it must keep giving the same answers as the CLI, and that
+constraint shapes most of the rules below.
 
 Read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Do not report security issues in the public tracker;
 see [SECURITY.md](SECURITY.md).
@@ -60,20 +63,26 @@ checked, not that the data is safe.
 
 ## Keeping parity with the specification tooling
 
-`src/lib/privacy/`, `src/lib/integrity/` and `src/lib/profiles/` are ports of files in the
-canonical repository. The vendored schema (`src/schema/`) and profile definitions
-(`src/profiles/`) are copies of published documents.
+Privacy linting and profile conformance are imported from `@openauditmodel/cli` through
+`src/lib/engines.ts`, which binds this app's validator to them. `src/lib/integrity/` is the one
+engine still carried here, and it is a port of the canonical files. The vendored schema
+(`src/schema/`) and profile definitions (`src/profiles/`) are copies of published documents, pinned
+to the same release as the engines.
 
-- Every intentional divergence from the original is documented in a comment at the top of the ported
-  file. Adaptations so far: schema validation calls this app's validator directly rather than an
-  injected one, digest calculation is asynchronous because Web Crypto is, Node's `Buffer` is
-  replaced by browser equivalents, and signature verification is omitted.
-- **Do not "improve" ported analysis logic in place.** If a rule or a check is wrong, it is wrong in
-  the specification tooling too — fix it there, then re-vendor. A viewer that is quietly stricter or
-  more lenient than the CLI is a bug even when its answer seems better.
+- Every intentional divergence from the original is documented in a comment at the top of the file
+  that carries it. Adaptations so far, all in integrity: digest calculation is asynchronous because
+  Web Crypto is, Node's `Buffer` is replaced by browser equivalents, and signature verification is
+  omitted.
+- **Do not reimplement imported analysis.** Privacy and profile logic lives in the package; if a
+  rule or a check is wrong, it is wrong in the specification tooling too — fix it there, release,
+  then bump the pin. A viewer that is quietly stricter or more lenient than the CLI is a bug even
+  when its answer seems better, and `src/lib/__tests__/parity.test.ts` is what says so.
+- **The engines, the schema and the profiles come from one release.** The dependency is pinned to an
+  exact version and the parity suite compares the vendored artifacts against that release's copies.
+  Bumping the pin and re-vendoring are one change, not two.
 - Refresh vendored files with `npm run sync-vendored -- ../path/to/OpenAuditModel`. It reports what
   changed and regenerates the precompiled validator. A new upstream profile is reported but not
-  adopted automatically, since adopting one also means registering it in `src/lib/profiles/index.ts`.
+  adopted automatically, since adopting one also means registering it in `src/lib/profiles.ts`.
 
 ## The precompiled validator
 

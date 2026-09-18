@@ -1,5 +1,5 @@
 /**
- * The Traces tab: cross-application flows reconstructed from
+ * The Observed Flow tab: cross-application flows reconstructed from
  * request.traceId / request.correlationId.
  *
  * Left: every detected flow, as "which applications, in what order". Right:
@@ -39,7 +39,7 @@ function shortKey(group: TraceGroup): string {
   return group.key.length > 18 ? `${group.key.slice(0, 18)}…` : group.key;
 }
 
-export function Traces({ events, onOpenEvent, onSelectApplication }: Props) {
+export function ObservedFlow({ events, onOpenEvent, onSelectApplication }: Props) {
   const groups = useMemo(() => buildTraceGroups(events), [events]);
   // Selection is by group IDENTITY (kind + key): the same identifier can
   // exist as both a trace group and a correlation group, and raw keys would

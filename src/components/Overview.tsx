@@ -14,7 +14,7 @@ import type { LoadedEvent, LoadSummary } from "../lib/types";
 import { readIntegrity, verifyEventIntegrity } from "../lib/integrity/verify-event";
 import { verifyChains } from "../lib/integrity/chain";
 import type { ChainReport } from "../lib/integrity/types";
-import { SEVERITY_ORDER, type Severity } from "../lib/privacy/types";
+import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 
 interface Props {
   readonly events: readonly LoadedEvent[];

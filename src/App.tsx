@@ -3,7 +3,7 @@ import "./App.css";
 import { EventTable } from "./components/EventTable";
 import { EventDetail } from "./components/EventDetail";
 import { Overview } from "./components/Overview";
-import { Traces } from "./components/Traces";
+import { ObservedFlow } from "./components/ObservedFlow";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { exportRows, loadFolder, pickFolder } from "./lib/load";
 import { displayPath } from "./lib/paths";
@@ -54,7 +54,7 @@ function App() {
   }
 
   // Looked up in all events, not the filtered view: a row opened from the
-  // Traces tab stays visible in the detail panel even when a filter hides it
+  // The Observed Flow tab stays visible in the detail panel even when a filter hides it
   // from the table.
   const selectedRow = events.find((row) => row.rowId === selectedRowId);
 
@@ -208,7 +208,7 @@ function App() {
           className={tab === "traces" ? "tab active" : "tab"}
           onClick={() => setTab("traces")}
         >
-          Traces
+          Observed Flow
         </button>
       </nav>
 
@@ -217,7 +217,7 @@ function App() {
       </div>
 
       <div className={tab === "traces" ? "tab-panel" : "tab-panel hidden"}>
-        <Traces
+        <ObservedFlow
           events={events}
           onOpenEvent={openEventFromTrace}
           onSelectApplication={showApplication}

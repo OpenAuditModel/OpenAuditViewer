@@ -1,9 +1,19 @@
-export interface ValidationIssue {
-  readonly path: string;
-  readonly message: string;
-}
+/**
+ * Validation issues have exactly the shape the published engines produce, so
+ * that what this app shows and what `openauditmodel validate` prints cannot
+ * drift apart in wording or in structure.
+ *
+ * `keyword` names the JSON Schema keyword behind the failure. A few issues are
+ * produced by the reader rather than by the schema — a file that is not an
+ * event, a document nested too deeply to validate, a validator that threw — and
+ * those carry `"reader"`, so the field is never a lie about where a failure
+ * came from.
+ */
+import type { ValidationIssue } from "@openauditmodel/cli/conformance/format-errors.js";
 
-export type { PrivacyFinding, Severity } from "./privacy/types";
+export type { ValidationIssue };
+
+export type { PrivacyFinding, Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 
 export type SourceFormat = "json" | "jsonl";
 
@@ -31,7 +41,7 @@ export interface LoadedEvent {
    * schema-invalid or unmapped row is not deep-linted, the same rule the CLI
    * follows: traversing an arbitrary structure produces paths that mean
    * nothing. Never absent vs. empty by accident — see parse.ts. */
-  readonly privacyFindings: readonly import("./privacy/types").PrivacyFinding[];
+  readonly privacyFindings: readonly import("@openauditmodel/cli/conformance/privacy/types.js").PrivacyFinding[];
 }
 
 /** A path the loader did not turn into events, and why. */

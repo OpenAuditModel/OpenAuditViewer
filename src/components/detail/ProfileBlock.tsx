@@ -7,11 +7,14 @@
  * they are kept visually distinct so a reader can tell "this is wrong" from
  * "this is recommended".
  */
-import type { ProfileCheckResult, ProfileFinding } from "../../lib/profiles";
+import type { ProfileCheckResult, ProfileFinding, RefusedProfile } from "../../lib/profiles";
+import { SUPPORTED_PROFILE_VERSION } from "../../lib/profiles";
 import { DetailBlock } from "./DetailBlock";
 
 interface Props {
   readonly results: readonly ProfileCheckResult[];
+  /** Profiles this build refuses to evaluate; shown so that silence is not read as conformance. */
+  readonly refused: readonly RefusedProfile[];
 }
 
 function FindingRow({
@@ -34,21 +37,37 @@ function FindingRow({
   );
 }
 
-export function ProfileBlock({ results }: Props) {
-  if (results.length === 0) {
+export function ProfileBlock({ results, refused }: Props) {
+  if (results.length === 0 && refused.length === 0) {
     return null;
   }
 
   const conforming = results.filter((result) => result.profileValid).length;
-  const allConform = conforming === results.length;
+  const allConform = conforming === results.length && refused.length === 0;
 
   return (
     <DetailBlock
       label="Profiles"
       swatch="resource"
       tone={allConform ? "ok" : "bad"}
-      status={`${conforming}/${results.length} conforming`}
+      status={
+        refused.length === 0
+          ? `${conforming}/${results.length} conforming`
+          : `${conforming}/${results.length} conforming · ${refused.length} not evaluated`
+      }
     >
+      {refused.map((profile) => (
+        <div className="profile-result" key={`refused-${profile.name}`}>
+          <div className="rule-line">
+            <span className="rule-id">{profile.name}</span>
+            <span className="count-bad">not evaluated</span>
+          </div>
+          <div className="finding-message">
+            declares profile version {profile.profileVersion}; this build implements{" "}
+            {SUPPORTED_PROFILE_VERSION}, so its rules are refused rather than partly applied
+          </div>
+        </div>
+      ))}
       {results.map((result) => (
         <div className="profile-result" key={result.profile.name}>
           <div className="rule-line">
