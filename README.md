@@ -103,7 +103,9 @@ more than the data says.
 
 Requires Node.js 22 or newer. Building the desktop application also needs the Rust toolchain, and on
 Windows the MSVC build tools ("Desktop development with C++", from either the standalone Build Tools
-or a full Visual Studio installation).
+or a full Visual Studio installation). On macOS it needs the Xcode command line tools
+(`xcode-select --install`), and a universal build needs both Rust targets:
+`rustup target add aarch64-apple-darwin x86_64-apple-darwin`.
 
 ```bash
 npm install
@@ -155,11 +157,19 @@ See [SECURITY.md](SECURITY.md) for the full posture and how to report an issue.
 
 ## Distribution and code signing
 
-Releases ship **one portable executable for Windows x64**. Download it, run it, delete it when you
-are done — nothing is installed and no administrator rights are needed. `npm run tauri build` still
-produces an MSI and an NSIS installer locally if you want them; they are simply not published.
+Releases ship **one portable executable for Windows x64** and **one universal disk image for
+macOS**. Download, run, delete when you are done — nothing is installed and no administrator rights
+are needed on either. `npm run tauri build` still produces an MSI and an NSIS installer locally if
+you want them; they are simply not published.
 
-The binary is **unsigned**, because there is no code-signing certificate. In practice:
+The macOS image is **signed with a Developer ID certificate and notarized by Apple**, so it opens on
+a double click with no Gatekeeper prompt. One image covers Apple Silicon and Intel. The release job
+verifies this rather than assuming it: it mounts the image it just built and runs `spctl --assess`,
+`codesign --verify` and `stapler validate` against the application inside, and fails the release if
+any of the three does.
+
+The Windows binary is **unsigned**, because there is no code-signing certificate for it. In
+practice:
 
 - Windows SmartScreen shows "Windows protected your PC" on first run of a downloaded copy; the user
   clicks "More info → Run anyway". Publishing a portable executable rather than an installer avoids
@@ -176,8 +186,9 @@ The binary is **unsigned**, because there is no code-signing certificate. In pra
   Edge on Windows 10. With no installer to bootstrap it, a machine without it needs it once from
   Microsoft.
 
-macOS and Linux are not published. The application has never been run on either, and shipping a
-binary for a platform nobody has tried would be a claim rather than a release.
+Linux is not published. The application compiles there — CI builds it on every push — but it has
+never been run on a Linux desktop, and shipping a binary for a platform nobody has tried would be a
+claim rather than a release.
 
 ## Known limitations
 
