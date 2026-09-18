@@ -9,9 +9,12 @@
  * whose whole job is opening untrusted files, would be the wrong trade.
  * Precompiling also keeps the Ajv compiler out of the shipped bundle.
  *
- * Errors are mapped through the same format-errors translation the CLI
- * uses, so an invalid file shows the same message and the same JSON Pointer
- * here as it does under `openauditmodel validate`.
+ * Errors are mapped through the same format-errors translation the CLI uses and
+ * are returned in the same shape, so an invalid file reports the same JSON
+ * Pointer, the same wording and the same detail here as it does under
+ * `openauditmodel validate`. How an issue is laid out on screen is the detail
+ * panel's business, not this function's: narrowing it here is what made the two
+ * disagree in the first place.
  *
  * Ajv recurses the instance; a value nested a few thousand levels deep
  * overflows the stack. `JSON.parse` imposes no depth limit of its own, so a
@@ -20,7 +23,7 @@
  * allowed to take down whichever caller happened to validate first.
  */
 import validateFn from "../schema/validate.generated.js";
-import { toIssues } from "./format-errors";
+import { toIssues } from "@openauditmodel/cli/conformance/format-errors.js";
 import type { ValidationIssue } from "./types";
 
 export function validateEvent(event: unknown): ValidationIssue[] {
@@ -32,20 +35,20 @@ export function validateEvent(event: unknown): ValidationIssue[] {
     // is a defect in this app, and saying "nested too deeply" about it would
     // send whoever reads the report looking at their data instead of at us.
     if (cause instanceof RangeError) {
-      return [{ path: "/", message: "structure is nested too deeply to validate" }];
+      return [
+        { path: "/", message: "structure is nested too deeply to validate", keyword: "reader" },
+      ];
     }
     return [
       {
         path: "/",
         message: `the validator failed unexpectedly: ${(cause as Error).message}`,
+        keyword: "reader",
       },
     ];
   }
   if (valid) {
     return [];
   }
-  return toIssues(validateFn.errors).map((issue) => ({
-    path: issue.path,
-    message: issue.detail === undefined ? issue.message : `${issue.message} (${issue.detail})`,
-  }));
+  return toIssues(validateFn.errors);
 }

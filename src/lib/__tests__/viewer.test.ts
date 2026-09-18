@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { isJsonLines, parseFile, parseJsonLine } from "../parse";
-import { lintEvent } from "../privacy/lint-event";
+import { lintEvent } from "../engines";
 import { calculateDigest } from "../integrity/digest";
 import { verifyEventIntegrity } from "../integrity/verify-event";
 import { verifyChains } from "../integrity/chain";

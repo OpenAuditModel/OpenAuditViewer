@@ -9,6 +9,80 @@ as such.
 
 ## Unreleased
 
+### Added — a differential parity suite against the published engines
+
+The README has claimed that this app answers the same as the `openauditmodel` CLI. That was an
+assertion: the privacy and profile engines here are ports, and nothing compared them.
+
+`src/lib/__tests__/parity.test.ts` runs both engines — the ported ones and the ones in
+`@openauditmodel/cli` — over every fixture the published conformance kit names, and asserts the
+answers are identical. Both sides are computed in the test, so there is no stored expectation to
+rot. It covers privacy linting and all ten profiles across 320 fixtures, plus the precompiled
+validator against the package's own.
+
+The package is pinned to an exact version, and the suite asserts that the vendored schema and the
+ten vendored profiles are byte-identical to that release's. Split provenance — engines from one
+release, the artifacts they evaluate from another — is the failure this pin exists to prevent.
+
+### Changed — privacy and profile analysis comes from the published package
+
+This app carried its own copy of the privacy and profile engines, ported from the conformance
+tooling. Two thousand one hundred and ninety-six lines of that copy are gone, replaced by
+`@openauditmodel/cli` pinned to an exact version. What is left in their place is
+`src/lib/engines.ts`: the seam that binds this app's precompiled validator to the published engines,
+which take a validator as a parameter for exactly this reason.
+
+The answers did not move — the parity suite above was written first and ran green across the swap,
+over every fixture the kit names.
+
+**Integrity stays local**, and that is not an oversight: Web Crypto is asynchronous where Node's
+hashing is not, which is a real difference rather than drift. The vendored profile registry stays
+too, because the package's profile loaders read the filesystem and this app has no filesystem to
+read from inside the webview. Neither of the two Node-bound modules is imported, and the bundle is
+measured rather than assumed: 554,173 bytes with the ported engines, 554,425 with the package's —
+252 bytes for the swap itself, and 555,212 for this release once the refusal below is in. No new
+dependency, no Node builtin and no runtime code generation in the built assets.
+
+What this buys is direction: analysis behaviour now changes upstream first and arrives here by
+bumping one pin. What it costs is stated too — this app inherits upstream's fixes and upstream's
+bugs alike.
+
+### Changed behaviour — a profile this build cannot evaluate is refused rather than reported conforming
+
+**Breaking** for anyone reading a folder with a profile newer than this build: a profile that was
+silently half-applied is now not applied at all, and says so.
+
+A profile declares the rule vocabulary it is written in. The engines read the rule keys they know
+and ignore the rest — which is correct for a tool that is never handed an unknown one, and wrong
+here: a rule this build cannot evaluate contributes no requirement, so the event comes back
+**conforming**. The first profile written in an extended vocabulary would have made this app quietly
+more permissive than the CLI, which is a defect even when the friendlier answer looks like a
+feature.
+
+Profiles are now partitioned on load. Anything declaring a profile version this build does not
+implement is refused, and the detail panel lists it by name next to the ones it did evaluate, with
+the version it declares. Ten of ten vendored profiles are evaluated today; the count of refusals is
+shown precisely so that it can never be zero silently.
+
+### Changed — the Traces tab is now Observed Flow
+
+It infers flows from `request.traceId`, `request.correlationId` and ordering. A causal graph needs
+`request.parentSpanId`, which the model does not carry, and a tab called Traces invites the reader
+to believe the app has one. The name now says what the view actually knows.
+
+### Fixed — a validation issue's detail no longer disappears into its message
+
+The parity suite found this on its first run. `validateEvent` narrowed each issue to the two fields
+the detail panel renders, appending the issue's `detail` to its message in parentheses and dropping
+`keyword`. The verdicts were identical and no path moved, but the wording was this app's own, while
+`src/lib/schema.ts` claimed in a comment that an invalid file "shows the same message" as the CLI.
+
+Issues now keep the shape the published engines produce, and the panel does the laying out — which
+is where a presentation choice belongs. On screen the detail still follows the message; in the code
+it is a field rather than a sentence fragment. The reader's own issues, for a file that is not an
+event or a document too deeply nested to validate, carry `keyword: "reader"`, so that the field
+never claims a schema keyword produced them.
+
 ## 0.3.0 - 2026-09-01
 
 ### Changed behaviour — the vendored incident-management profile moves to 0.2

@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { calculateDigest } from "../src/lib/integrity/digest.ts";
 import { parseFile } from "../src/lib/parse.ts";
 import { verifyChains } from "../src/lib/integrity/chain.ts";
-import { ALL_PROFILES, checkProfile } from "../src/lib/profiles/index.ts";
+import { ALL_PROFILES, checkProfile } from "../src/lib/profiles.ts";
 
 const OUT_DIR = join(import.meta.dirname, "..", "demo-logs");
 mkdirSync(OUT_DIR, { recursive: true });

@@ -13,7 +13,7 @@
  * With no argument the conventional sibling locations are tried. Only files
  * that already exist here are updated: a NEW upstream profile is reported
  * but not adopted, because adopting one also means registering it in
- * src/lib/profiles/index.ts.
+ * src/lib/profiles.ts.
  */
 import { copyFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -104,7 +104,7 @@ for (const file of readdirSync(profilesDir).filter((name) => name.endsWith(".jso
 }
 
 // New upstream profiles are reported, not adopted: registration in
-// src/lib/profiles/index.ts is a deliberate step, not a side effect.
+// src/lib/profiles.ts is a deliberate step, not a side effect.
 const upstreamProfiles = readdirSync(join(sourceRoot, "profiles"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name)
@@ -117,7 +117,7 @@ const vendored = new Set(
 for (const name of upstreamProfiles) {
   if (!vendored.has(name)) {
     console.log(
-      `  NEW upstream      profiles/${name} — vendor it and register in src/lib/profiles/index.ts`,
+      `  NEW upstream      profiles/${name} — vendor it and register in src/lib/profiles.ts`,
     );
   }
 }

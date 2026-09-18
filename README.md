@@ -25,9 +25,12 @@ The specification ships a CLI that answers these questions one command at a time
 shape for CI, and the wrong shape for the afternoon when someone hands you an archive and asks what
 is in it. This is the same analysis with a table in front of it.
 
-Because the analysis is ported from the conformance tooling rather than reimplemented, the answers
-match: an event this app reports as verified is one `openauditmodel verify-integrity` also reports
-as verified.
+Privacy linting and profile conformance are not reimplemented here: this app imports the engines
+from `@openauditmodel/cli`, pinned to one exact release along with the schema and the profile
+definitions it evaluates. Integrity stays local, because Web Crypto is asynchronous where Node's
+hashing is not. A test suite runs both sides over every fixture the published conformance kit names
+and asserts the answers are identical, so "the answers match the CLI" is a check rather than a
+claim.
 
 ## What it reads
 
@@ -78,13 +81,15 @@ separate questions, and the panel keeps them separate.
 **Overview** — totals, a per-application breakdown that filters the table when clicked, privacy
 findings by severity and by rule, chain health, and a button to verify every digest at once.
 
-**Traces** — cross-application flows, built from `request.traceId` and `request.correlationId`.
+**Observed Flow** — cross-application flows, built from `request.traceId` and
+`request.correlationId`. Observed, because ordering and identifiers are all it has: a causal graph
+would need `request.parentSpanId`, which the model does not carry.
 An aggregated service map shows which applications hand work to which, with the transition count,
 median gap and failure count on each edge, and a health ring on each node. Selecting a flow
 highlights the path it actually took; selecting a node filters the events to that application.
 Below the map, each flow appears as a per-application timeline and an ordered event list.
 
-![The Traces tab, showing the service map, a per-application timeline and the ordered events of one flow](assets/traces.png)
+![The Observed Flow tab, showing the service map, a per-application timeline and the ordered events of one flow](assets/traces.png)
 
 The flow above starts with a monitoring alert, passes through the gateway to a payment authorization
 that fails, schedules a retry, and ends ten hours later with an incident being opened — five events
@@ -193,7 +198,7 @@ binary for a platform nobody has tried would be a claim rather than a release.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The analysis is ported from the specification's conformance
+See [CONTRIBUTING.md](CONTRIBUTING.md). The analysis comes from the specification's conformance
 tooling and has to keep giving the same answers, so that document is mostly about which invariants
 a change has to preserve.
 

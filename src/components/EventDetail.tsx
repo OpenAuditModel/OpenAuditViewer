@@ -10,7 +10,12 @@
 import { useMemo } from "react";
 import type { LoadedEvent } from "../lib/types";
 import { useEventIntegrity } from "../hooks/useEventIntegrity";
-import { ALL_PROFILES, checkProfile, type ProfileCheckResult } from "../lib/profiles";
+import {
+  ALL_PROFILES,
+  REFUSED_PROFILES,
+  checkProfile,
+  type ProfileCheckResult,
+} from "../lib/profiles";
 import { safeStringify } from "../lib/diff";
 import { buildTraceGroups, findGroupForRow } from "../lib/trace";
 import { PrivacyBlock } from "./detail/PrivacyBlock";
@@ -80,6 +85,7 @@ export function EventDetail({ row, allEvents, bookmarked, onToggleBookmark, onSe
             {row.errors.map((error, index) => (
               <li key={index}>
                 <code>{error.path}</code> {error.message}
+                {error.detail === undefined ? null : ` (${error.detail})`}
               </li>
             ))}
           </ul>
@@ -94,7 +100,7 @@ export function EventDetail({ row, allEvents, bookmarked, onToggleBookmark, onSe
         <FlowBlock flow={flow} currentRowId={row.rowId} onSelectRow={onSelectRow} />
       ) : null}
 
-      <ProfileBlock results={profileResults} />
+      <ProfileBlock results={profileResults} refused={REFUSED_PROFILES} />
 
       <ChainBlock chain={chain} />
 
