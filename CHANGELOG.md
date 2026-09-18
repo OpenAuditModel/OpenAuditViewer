@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 While the project is **experimental**, breaking changes are possible in any release and are labelled
 as such.
 
-## Unreleased
+## 0.4.0 - 2026-09-19
 
 ### Added — a signed, notarized macOS build
 
