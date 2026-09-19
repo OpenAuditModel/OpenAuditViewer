@@ -44,6 +44,16 @@ export const DIGEST_BYTE_LENGTHS: Readonly<Record<SupportedHashAlgorithm, number
  */
 export const DIGEST_EXCLUDED_POINTERS = ["/integrity/hash", "/integrity/signature"] as const;
 
+/**
+ * Signature algorithms the reference implementation can verify. This app
+ * verifies none of them — it has no key — but it has to know the list, because
+ * a signature in an algorithm the reference implementation cannot check is
+ * reported as *not verified* there, with or without a key, and must be here
+ * too. Mirrors conformance/src/integrity/types.ts; the parity suite compares
+ * the verdicts this produces against the kit's.
+ */
+export const SUPPORTED_SIGNATURE_ALGORITHMS = ["Ed25519"] as const;
+
 /** Why a single event failed verification. */
 export type EventFindingKind =
   | "schema-invalid"
@@ -56,7 +66,8 @@ export type EventFindingKind =
   | "malformed-hash"
   | "digest-length-mismatch"
   | "hash-mismatch"
-  | "canonicalization-failed";
+  | "canonicalization-failed"
+  | "unsupported-signature-algorithm";
 
 /** Why a chain failed verification. */
 export type ChainFindingKind =

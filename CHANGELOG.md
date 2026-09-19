@@ -9,6 +9,32 @@ as such.
 
 ## Unreleased
 
+### Changed behaviour — a signature this verifier cannot check no longer reads as verified
+
+**Breaking** in the sense every "changed behaviour" entry here is: an event that this app reported
+as verified may now be reported as not verified. Specifically, an event whose `integrity.signature`
+declares an algorithm the reference implementation does not implement — anything other than
+Ed25519 today — fails verification with `unsupported-signature-algorithm`, as it has in the CLI
+since 0.3.0. A signature that can never be checked must not read as verified; the CLI closed that
+silent pass in 0.3.0 and this app did not follow, because integrity is the one engine still carried
+here rather than imported. A declared signature in an implemented algorithm is now shown as
+declared and not checked, which is what the CLI says without a key. Nothing about hash or chain
+verification changed.
+
+### Added — integrity parity against the conformance kit
+
+The differential parity suite compares the imported engines against the package and deliberately
+excludes integrity, because there is no second implementation of it to run — the port is the only
+copy in this app. The kit manifest records what the reference implementation answers for every
+fixture with integrity material and for every published chain directory, so the port is now
+asserted against those: the verdict and the finding kinds, never the wording. This is the one place
+in the suite where a stored, upstream-generated expectation is the right instrument, because the
+code it checks is deliberately not shared.
+
+It found the divergence above on its first run. It exists so that the next one — canonical 0.5.0
+decides what `integrity.batchId` means, and this app's chain engine has to follow — is found the
+same way, by a test, before a release rather than by a user after one.
+
 ### Removed — the Linux CI build
 
 CI compiled the application on Ubuntu on every push, for a platform the project has never published

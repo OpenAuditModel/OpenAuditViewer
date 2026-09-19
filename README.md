@@ -59,10 +59,14 @@ an export to JSON Lines is the producer's decision to make, and their mapping to
   `previousHash` link checked against its predecessor.
 - **Profile conformance** against the ten published profiles, for whichever ones govern each event.
 
-**Signature verification is deliberately absent.** `integrity.signature` is neither checked nor
-reported on. The app has no key registry and no trustworthy way to obtain a key; verifying a
-signature against a key taken from the same folder as the events would prove nothing. This matches
-the CLI's behaviour when run without `--public-key`.
+**Signature verification is deliberately absent — and a declared signature is still reported on.**
+The app has no key registry and no trustworthy way to obtain a key; verifying a signature against a
+key taken from the same folder as the events would prove nothing. So a signature is never checked
+here, but it is never passed over in silence either, and this matches the CLI run without
+`--public-key` exactly: a signature in an algorithm the reference implementation implements is
+shown as declared and not checked, with the verdict resting on the hash alone; a signature in an
+algorithm it does not implement **fails** verification, because a signature that can never be
+checked must not read as verified.
 
 ## What it shows
 
