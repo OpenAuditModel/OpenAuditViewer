@@ -6,11 +6,15 @@
  * `validateEvent` directly instead of taking an injectable validator, and
  * `calculateDigest` is awaited since Web Crypto is asynchronous.
  *
- * Signature verification (`integrity.signature` / Ed25519) is intentionally
- * not ported. The viewer only ever has the public event data a user opened
- * from disk; it has no key registry and no UI for supplying a public key.
- * A declared signature is neither checked nor reported on here, exactly as
- * the CLI behaves when it is run without `--public-key`.
+ * Signature verification itself is intentionally not ported: the viewer only
+ * ever has the public event data a user opened from disk, and no key to check
+ * a signature against. What *is* ported is what the CLI does about a declared
+ * signature when it has no key, because the two must agree. An algorithm the
+ * reference implementation does not implement fails verification — a signature
+ * that can never be checked must not read as verified (specification/integrity.md
+ * §6.1) — and an implemented algorithm is reported as declared but not checked,
+ * with the verdict resting on the hash alone. Until 0.5.0 this app skipped the
+ * first case and reported such an event verified; the parity suite found it.
  *
  * This proves that the event has not been altered since its digest was
  * calculated. It proves nothing about whether the event was ever stored, is
@@ -28,6 +32,7 @@ import {
 import {
   SUPPORTED_CANONICALIZATIONS,
   SUPPORTED_HASH_ALGORITHMS,
+  SUPPORTED_SIGNATURE_ALGORITHMS,
   type EventVerificationResult,
   type Finding,
   type PassedCheck,
@@ -46,6 +51,22 @@ interface IntegrityObject {
   readonly previousHash?: unknown;
   readonly chainId?: unknown;
   readonly signature?: unknown;
+}
+
+/** `integrity.signature`, once it is known to be an object. Read defensively:
+ * chain verification bypasses schema validation on the assumption it already
+ * ran once for the same event. */
+function readSignature(signature: unknown): { algorithm: string; value: string } | undefined {
+  if (signature === null || typeof signature !== "object" || Array.isArray(signature)) {
+    return undefined;
+  }
+  const record = signature as Record<string, unknown>;
+  const algorithm = record["algorithm"];
+  const value = record["value"];
+  if (typeof algorithm !== "string" || typeof value !== "string") {
+    return undefined;
+  }
+  return { algorithm, value };
 }
 
 function failure(
@@ -226,6 +247,36 @@ export async function verifyEventIntegrity(
   }
 
   checks.push({ message: "integrity hash valid" });
+
+  // A declared signature is always reported on, never passed over in silence.
+  const declared = readSignature(integrity.signature);
+  if (declared !== undefined) {
+    if (!(SUPPORTED_SIGNATURE_ALGORITHMS as readonly string[]).includes(declared.algorithm)) {
+      return {
+        label,
+        verified: false,
+        checks,
+        findings: [
+          {
+            kind: "unsupported-signature-algorithm",
+            label,
+            message: `signature algorithm "${declared.algorithm}" is not implemented by this verifier`,
+            detail: [
+              `implemented by the reference implementation: ${SUPPORTED_SIGNATURE_ALGORITHMS.join(", ")}`,
+              "a signature that can never be checked here must not read as verified",
+            ],
+          },
+        ],
+        canonicalization,
+        hashAlgorithm,
+        declaredHash: hash,
+        calculatedHash: calculated,
+      };
+    }
+    checks.push({
+      message: `signature declared (${declared.algorithm}), not checked: this viewer holds no public key`,
+    });
+  }
 
   return {
     label,

@@ -29,6 +29,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { readdirSync } from "node:fs";
+import { verifyChains } from "../integrity/chain";
+import { verifyEventIntegrity } from "../integrity/verify-event";
 import { lintEvent as boundLintEvent } from "../engines";
 import {
   ALL_PROFILES,
@@ -51,7 +54,20 @@ const require_ = createRequire(import.meta.url);
 const manifestPath = require_.resolve("@openauditmodel/cli/conformance-kit/manifest.json");
 const packageRoot = path.dirname(path.dirname(manifestPath));
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
-  readonly fixtures: readonly { readonly fixture: string }[];
+  readonly fixtures: readonly {
+    readonly fixture: string;
+    readonly verifyIntegrity?: { readonly verified: boolean; readonly findings: readonly string[] };
+  }[];
+  readonly chains: readonly {
+    readonly fixtures: string;
+    readonly intact: boolean;
+    readonly eventCount: number;
+    readonly chains: readonly {
+      readonly eventCount: number;
+      readonly intact: boolean;
+      readonly findings: readonly string[];
+    }[];
+  }[];
 };
 
 const corpus = manifest.fixtures.map((entry) => ({
@@ -204,5 +220,97 @@ describe("the profile version gate", () => {
     for (const profile of ALL_PROFILES) {
       expect(profile.profileVersion, profile.name).toBe(SUPPORTED_PROFILE_VERSION);
     }
+  });
+});
+
+/** Every `.json` file under a directory, recursively, in the order the kit generator uses. */
+function jsonFilesUnder(directory: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) =>
+    left.name.localeCompare(right.name, "en"),
+  )) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...jsonFilesUnder(full));
+    } else if (entry.name.endsWith(".json")) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+describe("integrity — the one engine still carried here", () => {
+  // Digest and chain verification are not imported from the package: Web Crypto
+  // is asynchronous where Node's hashing is not, so this app keeps its own port.
+  // A port can drift, and the differential suite above cannot see it. The kit
+  // manifest records what the reference implementation answers for every
+  // fixture with integrity material and for every published chain directory,
+  // computed by the same engines the CLI runs — the one place where a stored
+  // expectation is the right tool, because the code it checks is deliberately
+  // not shared. Compared as the kit records it: the verdict and the finding
+  // kinds, never the wording.
+
+  test("every fixture with integrity material verifies as the kit records", async () => {
+    const recorded = manifest.fixtures.filter((entry) => entry.verifyIntegrity !== undefined);
+    expect(recorded.length).toBeGreaterThan(0);
+
+    const mismatched: string[] = [];
+    let first: { mine: unknown; theirs: unknown } | undefined;
+
+    for (const entry of recorded) {
+      const event = JSON.parse(
+        readFileSync(path.join(packageRoot, entry.fixture), "utf8"),
+      ) as unknown;
+      const result = await verifyEventIntegrity(event, entry.fixture);
+      const mine = { verified: result.verified, findings: result.findings.map((f) => f.kind) };
+      const theirs = entry.verifyIntegrity;
+      if (differs(mine, theirs)) {
+        mismatched.push(entry.fixture);
+        first ??= { mine, theirs };
+      }
+    }
+
+    if (first !== undefined) {
+      expect(first.mine).toEqual(first.theirs);
+    }
+    expect(mismatched).toEqual([]);
+  });
+
+  test("every published chain directory verifies as the kit records", async () => {
+    expect(manifest.chains.length).toBeGreaterThan(0);
+
+    const mismatched: string[] = [];
+    let first: { mine: unknown; theirs: unknown } | undefined;
+
+    for (const record of manifest.chains) {
+      const inputs = jsonFilesUnder(path.join(packageRoot, record.fixtures)).map((file) => ({
+        label: path.relative(packageRoot, file),
+        event: JSON.parse(readFileSync(file, "utf8")) as unknown,
+      }));
+      const report = await verifyChains(inputs);
+      const mine = {
+        intact: report.intact,
+        eventCount: report.eventCount,
+        chains: report.chains.map((chain) => ({
+          eventCount: chain.eventCount,
+          intact: chain.intact,
+          findings: chain.findings.map((f) => f.kind),
+        })),
+      };
+      const theirs = {
+        intact: record.intact,
+        eventCount: record.eventCount,
+        chains: record.chains,
+      };
+      if (differs(mine, theirs)) {
+        mismatched.push(record.fixtures);
+        first ??= { mine, theirs };
+      }
+    }
+
+    if (first !== undefined) {
+      expect(first.mine).toEqual(first.theirs);
+    }
+    expect(mismatched).toEqual([]);
   });
 });
