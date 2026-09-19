@@ -190,9 +190,10 @@ practice:
   Edge on Windows 10. With no installer to bootstrap it, a machine without it needs it once from
   Microsoft.
 
-Linux is not published. The application compiles there — CI builds it on every push — but it has
-never been run on a Linux desktop, and shipping a binary for a platform nobody has tried would be a
-claim rather than a release.
+Linux is not a target: nothing is built, tested or published for it. Nothing about the application
+prevents it — the same Rust shell and the same frontend would run under WebKitGTK — and it is added
+if it is ever asked for, as a decision rather than a drift. Until then a Linux binary from any source
+is not this project's.
 
 ## Known limitations
 
