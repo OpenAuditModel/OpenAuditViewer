@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 While the project is **experimental**, breaking changes are possible in any release and are labelled
 as such.
 
+## Unreleased
+
+### Removed — the Linux CI build
+
+CI compiled the application on Ubuntu on every push, for a platform the project has never published
+and, as of this release, has decided not to target. Windows and macOS are the platforms; a job that
+proved Linux still compiled was proving something nobody was going to ship. The README now says so
+in one sentence instead of two paragraphs of hedging, and says what it would take to change the
+decision: being asked.
+
 ## 0.4.0 - 2026-09-19
 
 ### Added — a signed, notarized macOS build

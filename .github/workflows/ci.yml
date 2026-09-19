@@ -59,11 +59,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS proves the code compiles there. Nothing is published for it
-        # yet — the application has never been run on a Mac, and a release for
-        # a platform nobody has tried would be a claim rather than a release.
-        # Compiling is the cheapest half of finding that out.
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        # The two platforms the project publishes for, and only those. Linux is
+        # not a target — not built, not tested, not published — by decision
+        # rather than by neglect; it is added if it is ever asked for. A job that
+        # compiled it here proved nothing anyone was going to ship.
+        os: [windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v7
 
@@ -78,22 +78,18 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
       - run: npm ci
 
       - name: Build the desktop application
         run: npm run tauri build
 
-      # Windows only, deliberately. The Linux and macOS jobs exist to prove the
-      # code still compiles there; keeping their bundles for platforms the
-      # project does not publish, on every push, is storage spent on something
-      # nobody is meant to download. The portable executable lives outside
-      # `bundle/` because it is the compiled binary, not a packaged artifact.
+      # Windows only, deliberately. Both jobs exist to prove the code still
+      # compiles; what is published comes from release.yml, signed where it
+      # can be, and a macOS bundle built here without the signing material is
+      # not something anyone should download. The portable executable is kept
+      # because it is small and occasionally useful for a quick manual check;
+      # it lives outside `bundle/` because it is the compiled binary, not a
+      # packaged artifact.
       - name: Upload build output
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v7
