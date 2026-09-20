@@ -14,8 +14,8 @@ as such.
 **Breaking** in the sense every "changed behaviour" entry here is: an event that this app reported
 as verified may now be reported as not verified. Specifically, an event whose `integrity.signature`
 declares an algorithm the reference implementation does not implement — anything other than
-Ed25519 today — fails verification with `unsupported-signature-algorithm`, as it has in the CLI
-since 0.3.0. A signature that can never be checked must not read as verified; the CLI closed that
+Ed25519, ECDSA-P256-SHA256 and RSA-PSS-SHA256 — fails verification with
+`unsupported-signature-algorithm`, as it has in the CLI since 0.3.0. A signature that can never be checked must not read as verified; the CLI closed that
 silent pass in 0.3.0 and this app did not follow, because integrity is the one engine still carried
 here rather than imported. A declared signature in an implemented algorithm is now shown as
 declared and not checked, which is what the CLI says without a key. Nothing about hash or chain
@@ -31,9 +31,29 @@ asserted against those: the verdict and the finding kinds, never the wording. Th
 in the suite where a stored, upstream-generated expectation is the right instrument, because the
 code it checks is deliberately not shared.
 
-It found the divergence above on its first run. It exists so that the next one — canonical 0.5.0
-decides what `integrity.batchId` means, and this app's chain engine has to follow — is found the
-same way, by a test, before a release rather than by a user after one.
+It found the divergence above on its first run, and the next one on the first pin to canonical
+0.5.0 — see the entry below. That is what it is for: a divergence between the two integrity engines
+is found by a test before a release, rather than by a user after one.
+
+### Changed — pinned to `@openauditmodel/cli` 0.5.0, and the signature list follows it
+
+The reference implementation now verifies `ECDSA-P256-SHA256` and `RSA-PSS-SHA256` beside Ed25519,
+so an event signed with either of them is verified there and must not be reported here as carrying a
+signature nobody can check. The pin moved and the parity suite failed on exactly those two published
+fixtures, as designed; the algorithm list in this app's integrity port now has all three. Nothing
+else about the port changed, and this app still verifies no signature: it has no key, and the list
+exists only to tell "declared, not checked" from "cannot be checked at all".
+
+The pinned release brings a larger corpus — 327 fixtures and seven chain directories — and two new
+kit families, `checkpoints` and `proofs`, recording verdicts for documents that are not events. This
+app reads neither: the parity suite compares what it computes, and checkpoint and proof verification
+are not ported here. Two chain directories are new to the suite, and one of them is worth naming.
+`examples/integrity/invalid/truncated-chain/` is a chain whose most recent events were deleted, and
+both the reference implementation and this app report it **intact**, because a truncated chain is
+internally consistent and chain verification cannot see what is not there. The CLI's new
+`verify-checkpoint` is what sees it, given a checkpoint recorded beyond the store's reach. The
+README's limitations now say so rather than leaving a reader to assume an intact chain is a complete
+one.
 
 ### Removed — the Linux CI build
 
