@@ -26,7 +26,6 @@
     "verify": "npm run generate-validator && npm run typecheck && npm test && npm run format:check",
     "generate-validator": "node tools/generate-validator.mjs",
     "demo-logs": "tsx tools/generate-demo-logs.mjs",
-    "sync-vendored": "node tools/sync-vendored.mjs && npm run generate-validator",
     "preview": "vite preview",
     "tauri": "tauri"
   },

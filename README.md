@@ -48,7 +48,7 @@ an export to JSON Lines is the producer's decision to make, and their mapping to
 
 ## What it checks
 
-- **Schema validation** against a vendored copy of the canonical schema, reporting the same
+- **Schema validation** against the canonical schema, reporting the same
   messages and JSON Pointers as the CLI.
 - **Privacy linting** with the specification's deterministic rules: credential-shaped field names,
   known token formats, connection strings, credentials in URLs, high-entropy values, oversized
@@ -137,15 +137,22 @@ flows spanning four applications. Every credential-shaped value in it is recogni
 
 ## Keeping up with the specification
 
-The schema and the profile definitions are vendored copies, so the app works offline. The cost is
-that they can drift from the canonical repository:
+The schema, the ten profile definitions and the analysis engines all come from
+`@openauditmodel/cli`, pinned to an exact version and bundled at build time. The app therefore works
+offline and cannot hold a schema from one release beside engines from another — not because a test
+catches it, but because there is only one place any of it comes from.
+
+Keeping up is one line:
 
 ```bash
-npm run sync-vendored -- ../path/to/OpenAuditModel
+npm install @openauditmodel/cli@<version> --save-exact
+npm run verify
 ```
 
-This reports exactly what changed and regenerates the precompiled validator. Nothing checks for
-drift automatically — run it after the specification moves.
+The parity suite runs the pinned engines against the release's own fixture corpus and its
+conformance kit, so a release that changed a verdict says so before the pin is committed. That is
+how the 0.5.0 pin was taken: two new signature algorithms landed upstream, the suite failed on
+exactly the two fixtures that moved, and the fix was one list.
 
 ## Security
 
@@ -219,7 +226,10 @@ is not this project's.
 - Loading still reads and validates every file before the table fills in. The table virtualizes, so
   scrolling stays smooth, but the initial pass over a big folder takes time.
 - Only JSON and JSON Lines are read; any other export has to be converted first.
-- Vendored schema and profiles can lag the canonical repository between `sync-vendored` runs.
+- The schema, the profiles and the analysis engines all come from one pinned release, so they can
+  lag the canonical repository until that pin is raised. A release the pin has not reached is not
+  evaluated here, and a profile written in a rule vocabulary this build does not implement is
+  refused by name rather than partly evaluated.
 - Directory recursion is depth-limited and does not follow symlink cycles.
 - Bookmarks last for the session. The flow map layout persists; the theme choice persists.
 

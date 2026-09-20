@@ -9,6 +9,25 @@ as such.
 
 ## Unreleased
 
+### Changed — the schema and the profiles are imported, not copied
+
+`src/schema/audit-event.schema.json` and the ten files under `src/profiles/` were copies of
+documents the pinned package already ships, kept in step by `npm run sync-vendored` and watched by a
+parity assertion. Both are deleted. The schema and the profiles are now imported from
+`@openauditmodel/cli` — pinned to an exact version, resolved by Vite at build time, so the app still
+works offline and still fetches nothing at run time.
+
+What this removes is a class of defect rather than a bug: engines from one release evaluating a
+schema or a profile from another cannot happen when there is one place any of it comes from. The
+parity suite's "vendored equals the pinned release" comparison is replaced by one that reads the
+package's files back and asserts the app is holding them, and it now also checks that the registry
+covers every profile the package publishes — so a profile added upstream is a failure here rather
+than a silent absence. The precompiled validator is generated from the package's schema too, and
+regenerating it produced the same bytes, which is the evidence the copies had not drifted.
+
+Keeping up with the specification is now `npm install @openauditmodel/cli@<version> --save-exact`
+followed by `npm run verify`. `npm run sync-vendored` and `tools/sync-vendored.mjs` are gone.
+
 ### Changed behaviour — a signature this verifier cannot check no longer reads as verified
 
 **Breaking** in the sense every "changed behaviour" entry here is: an event that this app reported

@@ -137,7 +137,7 @@ export function SettingsDialog({ open, onClose }: Props) {
               </tr>
               <tr>
                 <td>OpenAuditModel spec</td>
-                <td>0.1 · {ALL_PROFILES.length} profiles vendored</td>
+                <td>0.1 · {ALL_PROFILES.length} profiles</td>
               </tr>
               <tr>
                 <td>Tauri runtime</td>
