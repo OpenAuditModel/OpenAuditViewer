@@ -50,9 +50,15 @@ export const DIGEST_EXCLUDED_POINTERS = ["/integrity/hash", "/integrity/signatur
  * a signature in an algorithm the reference implementation cannot check is
  * reported as *not verified* there, with or without a key, and must be here
  * too. Mirrors conformance/src/integrity/types.ts; the parity suite compares
- * the verdicts this produces against the kit's.
+ * the verdicts this produces against the kit's, and fails the moment the two
+ * lists differ — which is how the reference implementation's 0.5.0 widening
+ * from one algorithm to three was noticed here.
  */
-export const SUPPORTED_SIGNATURE_ALGORITHMS = ["Ed25519"] as const;
+export const SUPPORTED_SIGNATURE_ALGORITHMS = [
+  "Ed25519",
+  "ECDSA-P256-SHA256",
+  "RSA-PSS-SHA256",
+] as const;
 
 /** Why a single event failed verification. */
 export type EventFindingKind =

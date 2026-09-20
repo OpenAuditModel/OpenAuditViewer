@@ -202,6 +202,13 @@ is not this project's.
 ## Known limitations
 
 - No signature verification, as described above.
+- **No checkpoint or inclusion proof verification.** Chain verification proves that the events you
+  opened are consistent with each other; it cannot prove they are all the events that existed. A
+  chain whose most recent events were deleted is internally consistent and is reported here as
+  intact — correctly, and that is the limit. Seeing a deleted tail takes a checkpoint recorded
+  somewhere the store's administrators do not control, which the `auditmodel` CLI compares an
+  archive against with `verify-checkpoint`; proving one event belongs to a published tree takes
+  `verify-proof`. Neither is ported here yet.
 - Everything read stays in memory, so loading is bounded: JSON Lines files are streamed a line at a
   time, a single `.json` document over 32 MB is declined rather than read, and a load stops at
   100,000 events. Each of those is reported on screen — as is every file that could not be read and
