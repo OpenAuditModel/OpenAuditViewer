@@ -10,6 +10,7 @@ import { calculateDigest } from "../integrity/digest";
 import { verifyEventIntegrity } from "../integrity/verify-event";
 import { verifyChains } from "../integrity/chain";
 import { ALL_PROFILES, checkProfile } from "../profiles";
+import { governsNothing, summariseArchiveCoverage } from "../coverage";
 import { buildFlowTopology, buildTraceGroups } from "../trace";
 import type { LoadedEvent } from "../types";
 
@@ -441,5 +442,115 @@ describe("trace grouping and topology", () => {
     expect(topology.edges[0]?.medianDeltaMs).toBe(1500);
     expect(topology.apps.find((app) => app.name === "app1")?.depth).toBe(0);
     expect(topology.apps.find((app) => app.name === "app2")?.depth).toBe(1);
+  });
+});
+
+describe("archive coverage", () => {
+  /** A loaded row wrapping an event, as the table holds it. */
+  function loaded(id: string, event: Record<string, unknown>, valid = true): LoadedEvent {
+    return {
+      rowId: id,
+      sourceFile: "archive.jsonl",
+      sourceFormat: "jsonl",
+      event,
+      valid,
+      errors: [],
+      privacyFindings: [],
+      eventName: (event["event"] as Record<string, unknown> | undefined)?.["name"] as
+        string | undefined,
+    };
+  }
+
+  const incidentRow = loaded(
+    "r1",
+    minimalEvent("018f1b70-2c18-7f3a-b46d-000000000050", {
+      event: { name: "incident.case.create", category: "incident-management", outcome: "success" },
+      resource: { type: "incident", id: "inc-1" },
+    }),
+  );
+  const conformingIncident = loaded(
+    "r2",
+    minimalEvent("018f1b70-2c18-7f3a-b46d-000000000051", {
+      event: { name: "incident.case.create", category: "incident-management", outcome: "success" },
+      resource: { type: "incident", id: "inc-2" },
+      authorization: { decision: "allow" },
+      metadata: { incident: { status: "open", priority: "p2" } },
+    }),
+  );
+  // `configuration.setting.update`, the default here, is governed by a real
+  // profile — a name outside every selector is needed to test the other case.
+  const ungoverned = loaded(
+    "r3",
+    minimalEvent("018f1b70-2c18-7f3a-b46d-000000000052", {
+      event: { name: "catalogue.item.reprice", category: "data-modification", outcome: "success" },
+      resource: { type: "catalogue-item", id: "sku-1" },
+    }),
+  );
+
+  it("counts what each profile governed, conformed and violated", () => {
+    const report = summariseArchiveCoverage([incidentRow, conformingIncident, ungoverned]);
+    expect(report.checked).toBe(3);
+    expect(report.skipped).toBe(0);
+
+    const incident = report.profiles.find(
+      (entry) => entry.coverage.profile.name === "incident-management",
+    );
+    expect(incident?.coverage.events.conforming).toBe(1);
+    expect(incident?.coverage.events.violations).toBe(1);
+    expect(incident?.coverage.events.notApplicable).toBe(1);
+    expect(incident?.governed.map((entry) => entry.row.rowId)).toEqual(["r1", "r2"]);
+  });
+
+  it("reports a profile that reached nothing as governing nothing, never as conforming", () => {
+    const report = summariseArchiveCoverage([ungoverned]);
+    for (const entry of report.profiles) {
+      expect(entry.coverage.nameTotals.governed, entry.coverage.profile.name).toBe(0);
+      expect(entry.coverage.events.conforming, entry.coverage.profile.name).toBe(0);
+      expect(entry.coverage.events.notApplicable, entry.coverage.profile.name).toBe(1);
+      expect(entry.governed).toEqual([]);
+    }
+    expect(governsNothing(report)).toBe(true);
+  });
+
+  it("does not offer a core-invalid row to any profile", () => {
+    // A profile never evaluates an event the core rejects, so counting such a
+    // row as ungoverned ten times over would say something false about ten
+    // profiles at once.
+    const broken = { ...minimalEvent("018f1b70-2c18-7f3a-b46d-000000000053") };
+    delete broken["actor"];
+    const report = summariseArchiveCoverage([incidentRow, loaded("r4", broken, false)]);
+
+    expect(report.checked).toBe(1);
+    expect(report.skipped).toBe(1);
+    for (const entry of report.profiles) {
+      expect(entry.coverage.events.coreInvalid).toBe(0);
+    }
+  });
+
+  it("covers every profile this build evaluates, in its order", () => {
+    const report = summariseArchiveCoverage([incidentRow]);
+    expect(report.profiles.map((entry) => entry.coverage.profile.name)).toEqual(
+      ALL_PROFILES.map((profile) => profile.name),
+    );
+  });
+
+  it("agrees with checkProfile for every governed row", () => {
+    // The tab must not become a second opinion: the numbers it shows are the
+    // per-event engine's, grouped.
+    const report = summariseArchiveCoverage([incidentRow, conformingIncident, ungoverned]);
+    for (const entry of report.profiles) {
+      const definition = ALL_PROFILES.find(
+        (profile) => profile.name === entry.coverage.profile.name,
+      );
+      for (const { row, result } of entry.governed) {
+        const direct = checkProfile(row.event, row.sourceFile, definition!, {
+          validateCore: false,
+        });
+        expect(direct.status).toBe(result.status);
+        expect(direct.errors.map((error) => error.ruleId)).toEqual(
+          result.errors.map((error) => error.ruleId),
+        );
+      }
+    }
   });
 });

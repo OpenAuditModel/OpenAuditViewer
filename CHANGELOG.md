@@ -9,6 +9,30 @@ as such.
 
 ## Unreleased
 
+### Added — the Coverage tab
+
+The Events tab answers whether one event conforms. This answers what a reviewer asks about a whole
+archive: which of the ten profiles reach it, and what they actually checked. Per profile it shows
+the events governed, conforming and violating, how many rules were selected out of the total, how
+many of those contributed requirements, and — the number worth having — the rules that selected an
+event and then required nothing of it, because a condition never held. Each of those looked enforced
+and was not.
+
+The counters come from the package's own `summariseCoverage`, over results from the same
+`checkProfile` the detail panel uses, so this tab is the per-event verdicts grouped rather than a
+second opinion about them. A test asserts that for every governed row.
+
+A profile that reaches nothing is reported as governing nothing, never as satisfied: an event no
+rule selects is not applicable, and not applicable is not conformance. When no profile governs a
+single event the tab says so plainly, and says the usual cause is event names shaped differently
+from the convention the profiles select on. Nothing is drawn as a percentage or a bar: "7 of 15
+rules selected" describes an archive, not its quality, and a profile is not a checklist an archive
+is meant to fill. A core-invalid row is not offered to any profile, since a profile never evaluates
+an event the core rejects, and counting it as ungoverned ten times would say something false about
+ten profiles at once.
+
+Measuring waits for a click, like the digest sweep: it is one profile check per event per profile.
+
 ### Changed — the schema and the profiles are imported, not copied
 
 `src/schema/audit-event.schema.json` and the ten files under `src/profiles/` were copies of
