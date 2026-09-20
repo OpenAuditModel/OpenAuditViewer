@@ -8,7 +8,9 @@ application boundaries.
 
 The analysis runs entirely on your machine. The app reads only from sources you point it at, sends
 audit content nowhere — no telemetry, no crash reporting, no remote validation service — and writes
-nothing except an export you ask for.
+nothing except an export you ask for. It opens a socket for exactly one thing, and only when you
+press the button: an update check in Settings that asks GitHub for the latest release tag. Never on
+launch, never on a timer.
 
 **Status: experimental.** It works and it is tested, but it is young, it has not been externally
 audited, and interfaces may change.
