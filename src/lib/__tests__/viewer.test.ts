@@ -304,7 +304,7 @@ describe("integrity: chains", () => {
   });
 });
 
-describe("profile conformance (vendored profiles)", () => {
+describe("profile conformance (the published profiles)", () => {
   const incident = ALL_PROFILES.find((profile) => profile.name === "incident-management");
 
   it("vendors all ten published profiles", () => {

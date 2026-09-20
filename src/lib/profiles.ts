@@ -1,30 +1,35 @@
 /**
- * The vendored profile registry.
+ * The profile registry, read from the pinned package.
  *
- * These are copies of the profile definitions published in the canonical
- * OpenAuditModel repository (profiles/<name>/profile.json), vendored at the
- * same time as src/schema/audit-event.schema.json and subject to the same
- * staleness caveat: if a profile changes upstream, these copies do not learn
- * about it until they are re-vendored. See src/schema/README.md.
+ * These are the profile definitions the canonical repository publishes, taken
+ * from `@openauditmodel/cli` at the version `package.json` pins exactly. They
+ * used to be copies under `src/profiles/`, kept in step by a sync script and
+ * watched by a test — which worked, and was a test guarding a class of drift
+ * that importing the files removes outright. The engines and the documents
+ * they evaluate now come from one release by construction, so split provenance
+ * is not a thing that can happen and then be caught.
+ *
+ * Bundling still works offline: Vite resolves these at build time, the same as
+ * any other import, and nothing is fetched at run time.
  */
 import type { ProfileDefinition } from "@openauditmodel/cli/conformance/profiles/types.js";
 
-import apiAndIntegrationManagement from "../profiles/api-and-integration-management.json";
-import backupAndRecovery from "../profiles/backup-and-recovery.json";
-import customerAndAccountManagement from "../profiles/customer-and-account-management.json";
-import deploymentAndChangeManagement from "../profiles/deployment-and-change-management.json";
-import documentManagement from "../profiles/document-management.json";
-import financialTransactionManagement from "../profiles/financial-transaction-management.json";
-import identityAndAccessManagement from "../profiles/identity-and-access-management.json";
-import incidentManagement from "../profiles/incident-management.json";
-import messageBrokerManagement from "../profiles/message-broker-management.json";
-import secretsAndKeyManagement from "../profiles/secrets-and-key-management.json";
+import apiAndIntegrationManagement from "@openauditmodel/cli/profiles/api-and-integration-management/profile.json";
+import backupAndRecovery from "@openauditmodel/cli/profiles/backup-and-recovery/profile.json";
+import customerAndAccountManagement from "@openauditmodel/cli/profiles/customer-and-account-management/profile.json";
+import deploymentAndChangeManagement from "@openauditmodel/cli/profiles/deployment-and-change-management/profile.json";
+import documentManagement from "@openauditmodel/cli/profiles/document-management/profile.json";
+import financialTransactionManagement from "@openauditmodel/cli/profiles/financial-transaction-management/profile.json";
+import identityAndAccessManagement from "@openauditmodel/cli/profiles/identity-and-access-management/profile.json";
+import incidentManagement from "@openauditmodel/cli/profiles/incident-management/profile.json";
+import messageBrokerManagement from "@openauditmodel/cli/profiles/message-broker-management/profile.json";
+import secretsAndKeyManagement from "@openauditmodel/cli/profiles/secrets-and-key-management/profile.json";
 
 /* JSON imports are typed structurally by TypeScript; the literal string fields
  * (severity, status) infer as plain `string`, so a cast through `unknown` is
  * unavoidable here. The definitions themselves are validated upstream against
  * profiles/profile-definition.schema.json before publication. */
-const VENDORED_PROFILES = [
+const PUBLISHED_PROFILES = [
   apiAndIntegrationManagement,
   backupAndRecovery,
   customerAndAccountManagement,
@@ -54,7 +59,7 @@ const VENDORED_PROFILES = [
  */
 export const SUPPORTED_PROFILE_VERSION = "0.1";
 
-/** A vendored profile this build will not evaluate, and the version it declares. */
+/** A published profile this build will not evaluate, and the version it declares. */
 export interface RefusedProfile {
   readonly name: string;
   readonly profileVersion: string;
@@ -79,12 +84,12 @@ export function partitionProfiles(definitions: readonly ProfileDefinition[]): {
   return { supported, refused };
 }
 
-const partitioned = partitionProfiles(VENDORED_PROFILES);
+const partitioned = partitionProfiles(PUBLISHED_PROFILES);
 
 /** The profiles this build evaluates. */
 export const ALL_PROFILES: readonly ProfileDefinition[] = partitioned.supported;
 
-/** The vendored profiles it refuses, for the panel to say so out loud. */
+/** The published profiles it refuses, for the panel to say so out loud. */
 export const REFUSED_PROFILES: readonly RefusedProfile[] = partitioned.refused;
 
 export { checkProfile } from "./engines";

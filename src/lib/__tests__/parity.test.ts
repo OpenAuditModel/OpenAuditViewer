@@ -12,9 +12,11 @@
  *    must be identical.
  * 2. The precompiled validator — generated at build time, the one piece of
  *    analysis that is neither ported nor shared — disagrees with the package's.
- * 3. Split provenance: engines from one release, vendored schema and profiles
- *    from another. The dependency is pinned exactly and the vendored artifacts
- *    are compared against that release's.
+ * 3. Split provenance: engines from one release, the schema and profiles they
+ *    evaluate from another. This used to be a comparison between vendored
+ *    copies and the pinned release; the copies are gone and both halves are
+ *    imported from the package, so the only thing left to assert is that the
+ *    pin is exact.
  *
  * Both sides are computed here, so there is no stored expectation to rot. The
  * suite runs in Node under vitest: `node:fs` and the package's filesystem-bound
@@ -24,7 +26,7 @@
  * found one divergence then — see the 0.4.0 changelog entry about a validation
  * issue's detail. That is what it is for.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -42,7 +44,7 @@ import {
 } from "../profiles";
 import type { ProfileDefinition } from "@openauditmodel/cli/conformance/profiles/types.js";
 import { validateEvent } from "../schema";
-import vendoredSchema from "../../schema/audit-event.schema.json";
+import canonicalSchema from "@openauditmodel/cli/schemas/v0.1/audit-event.schema.json";
 
 import { lintEvent as publishedLintEvent } from "@openauditmodel/cli/conformance/privacy/lint-event.js";
 import { checkProfile as publishedCheckProfile } from "@openauditmodel/cli/conformance/profiles/check-profile.js";
@@ -76,7 +78,7 @@ const corpus = manifest.fixtures.map((entry) => ({
 }));
 
 /** This app's precompiled validator, in the shape the published engines take. */
-const validator = { schemaId: vendoredSchema.$id, validateEvent };
+const validator = { schemaId: canonicalSchema.$id, validateEvent };
 
 /** The published engines' own validator, compiled from the package's schema. */
 const publishedValidator = createValidator(resolveSchemaPath());
@@ -95,13 +97,16 @@ describe("the corpus this parity suite runs on", () => {
     expect(corpus.length).toBeGreaterThan(300);
   });
 
-  test("comes from the same release as the vendored artifacts", () => {
-    // Split provenance is the failure this pin exists to prevent: engines from
-    // one release and the schema or profiles they evaluate from another.
+  test("is the release the app itself imports, schema and profiles alike", () => {
+    // Split provenance — engines from one release, the documents they evaluate
+    // from another — used to be prevented by comparing vendored copies against
+    // the package. There are no copies now: both are imported from it, so this
+    // reads the same files back from disk and asserts the app is holding what
+    // the package ships rather than something bundled from elsewhere.
     const packageSchema = JSON.parse(
       readFileSync(path.join(packageRoot, "schemas", "v0.1", "audit-event.schema.json"), "utf8"),
-    ) as unknown;
-    expect(vendoredSchema).toEqual(packageSchema);
+    ) as { $id: string };
+    expect(canonicalSchema).toEqual(packageSchema);
 
     for (const profile of ALL_PROFILES) {
       const published = JSON.parse(
@@ -109,6 +114,13 @@ describe("the corpus this parity suite runs on", () => {
       ) as unknown;
       expect({ [profile.name]: profile }).toEqual({ [profile.name]: published });
     }
+    expect(ALL_PROFILES.length + REFUSED_PROFILES.length).toBe(
+      readdirSync(path.join(packageRoot, "profiles"), { withFileTypes: true }).filter(
+        (entry) =>
+          entry.isDirectory() &&
+          existsSync(path.join(packageRoot, "profiles", entry.name, "profile.json")),
+      ).length,
+    );
   });
 
   test("is pinned to an exact version, not a range", () => {
@@ -165,8 +177,8 @@ describe("profile conformance", () => {
 
 describe("schema validation", () => {
   test("the precompiled validator agrees with the published one, for every fixture", () => {
-    // The validator is generated at build time from the vendored schema, so it
-    // is the one piece of analysis that is neither ported nor shared. If it
+    // The validator is generated at build time from the package's schema, so
+    // it is the one piece of analysis that is neither ported nor shared. If it
     // disagreed, every verdict above would be comparing two engines that were
     // handed different facts.
     const mismatched: string[] = [];
@@ -214,7 +226,7 @@ describe("the profile version gate", () => {
     expect(refused).toEqual([{ name: "from-the-future", profileVersion: "0.2" }]);
   });
 
-  test("evaluates every profile vendored today, and refuses none of them", () => {
+  test("evaluates every profile the package publishes, and refuses none of them", () => {
     expect(REFUSED_PROFILES).toEqual([]);
     expect(ALL_PROFILES.length).toBe(10);
     for (const profile of ALL_PROFILES) {

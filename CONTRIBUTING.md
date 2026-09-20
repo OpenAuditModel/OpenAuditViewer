@@ -73,9 +73,9 @@ checked, not that the data is safe.
 
 Privacy linting and profile conformance are imported from `@openauditmodel/cli` through
 `src/lib/engines.ts`, which binds this app's validator to them. `src/lib/integrity/` is the one
-engine still carried here, and it is a port of the canonical files. The vendored schema
-(`src/schema/`) and profile definitions (`src/profiles/`) are copies of published documents, pinned
-to the same release as the engines.
+engine still carried here, and it is a port of the canonical files. The canonical schema and the ten
+profile definitions are imported from the same package and bundled at build time; there are no
+copies of them in this repository.
 
 - Every intentional divergence from the original is documented in a comment at the top of the file
   that carries it. Adaptations so far, all in integrity: digest calculation is asynchronous because
@@ -85,12 +85,14 @@ to the same release as the engines.
   rule or a check is wrong, it is wrong in the specification tooling too — fix it there, release,
   then bump the pin. A viewer that is quietly stricter or more lenient than the CLI is a bug even
   when its answer seems better, and `src/lib/__tests__/parity.test.ts` is what says so.
-- **The engines, the schema and the profiles come from one release.** The dependency is pinned to an
-  exact version and the parity suite compares the vendored artifacts against that release's copies.
-  Bumping the pin and re-vendoring are one change, not two.
-- Refresh vendored files with `npm run sync-vendored -- ../path/to/OpenAuditModel`. It reports what
-  changed and regenerates the precompiled validator. A new upstream profile is reported but not
-  adopted automatically, since adopting one also means registering it in `src/lib/profiles.ts`.
+- **The engines, the schema and the profiles come from one release**, by construction rather than by
+  check: all three are imported from the pinned package, which is pinned to an exact version. There
+  are no copies to re-sync, so raising the pin is the whole operation.
+- **Raising the pin** is `npm install @openauditmodel/cli@<version> --save-exact` followed by
+  `npm run verify`. The build regenerates the precompiled validator from the new schema, and the
+  parity suite runs the engines against that release's fixture corpus and conformance kit, so a
+  release that moved a verdict fails here before the pin is committed. A new upstream profile still
+  needs registering in `src/lib/profiles.ts`, which is one import line.
 
 ## The precompiled validator
 

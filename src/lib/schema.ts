@@ -1,6 +1,6 @@
 /**
- * Validates a parsed event against the vendored canonical OpenAuditModel
- * schema. See src/schema/README.md for provenance.
+ * Validates a parsed event against the canonical OpenAuditModel schema, as
+ * published in `@openauditmodel/cli` at the version package.json pins.
  *
  * The validator is PRECOMPILED at build time (tools/generate-validator.mjs)
  * rather than compiled from the schema at startup. Ajv builds validators

@@ -29,10 +29,10 @@ import type {
 } from "@openauditmodel/cli/conformance/profiles/types.js";
 
 import { validateEvent } from "./schema";
-import vendoredSchema from "../schema/audit-event.schema.json";
+import canonicalSchema from "@openauditmodel/cli/schemas/v0.1/audit-event.schema.json";
 
 /** This app's precompiled validator, in the shape the engines take. */
-const validator = { schemaId: vendoredSchema.$id, validateEvent };
+const validator = { schemaId: canonicalSchema.$id, validateEvent };
 
 /** Reports values shaped like credentials, and payloads that were not minimized. */
 export function lintEvent(
