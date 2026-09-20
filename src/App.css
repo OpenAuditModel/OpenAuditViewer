@@ -1387,3 +1387,34 @@ body,
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Coverage tab. The list is a column of profile panels, each one a small
+   report; nothing here renders a ratio as a bar, because a profile is not a
+   checklist an archive is supposed to fill. */
+.coverage {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.coverage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.coverage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.coverage .muted {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.coverage .secondary-button {
+  align-self: flex-start;
+}

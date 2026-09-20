@@ -85,6 +85,15 @@ separate questions, and the panel keeps them separate.
 **Overview** — totals, a per-application breakdown that filters the table when clicked, privacy
 findings by severity and by rule, chain health, and a button to verify every digest at once.
 
+**Coverage** — which of the ten profiles reach this archive at all, and what each one actually
+checked: events governed, conforming and violating, rules selected, and the rules that selected an
+event and then required nothing of it because a condition never held. Every number is the per-event
+engine's, grouped, so the tab cannot become a second opinion. A profile that governs nothing is
+reported as governing nothing, never as satisfied — an event no rule selects is **not applicable**,
+and not applicable is not conformance. Nothing here is rendered as a percentage or a grade: "7 of 15
+rules selected" describes this archive, not its quality. Measuring is a button, because it is a
+profile check per event per profile.
+
 **Observed Flow** — cross-application flows, built from `request.traceId` and
 `request.correlationId`. Observed, because ordering and identifiers are all it has: a causal graph
 would need `request.parentSpanId`, which the model does not carry.

@@ -4,6 +4,7 @@ import { EventTable } from "./components/EventTable";
 import { EventDetail } from "./components/EventDetail";
 import { Overview } from "./components/Overview";
 import { ObservedFlow } from "./components/ObservedFlow";
+import { Coverage } from "./components/Coverage";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { exportRows, loadFolder, pickFolder } from "./lib/load";
 import { displayPath } from "./lib/paths";
@@ -24,7 +25,7 @@ import type { LoadedEvent, LoadSummary } from "./lib/types";
 // Before first paint, so a dark-theme user never sees a light flash.
 applyThemePreference(loadThemePreference());
 
-type Tab = "overview" | "events" | "traces";
+type Tab = "overview" | "events" | "coverage" | "traces";
 
 function App() {
   const [events, setEvents] = useState<LoadedEvent[]>([]);
@@ -205,6 +206,13 @@ function App() {
         </button>
         <button
           type="button"
+          className={tab === "coverage" ? "tab active" : "tab"}
+          onClick={() => setTab("coverage")}
+        >
+          Coverage
+        </button>
+        <button
+          type="button"
           className={tab === "traces" ? "tab active" : "tab"}
           onClick={() => setTab("traces")}
         >
@@ -214,6 +222,10 @@ function App() {
 
       <div className={tab === "overview" ? "tab-panel" : "tab-panel hidden"}>
         <Overview events={events} summary={summary} onSelectApplication={showApplication} />
+      </div>
+
+      <div className={tab === "coverage" ? "tab-panel" : "tab-panel hidden"}>
+        <Coverage events={events} onSelectRow={openEventFromTrace} />
       </div>
 
       <div className={tab === "traces" ? "tab-panel" : "tab-panel hidden"}>
