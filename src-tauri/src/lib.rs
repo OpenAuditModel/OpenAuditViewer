@@ -3,6 +3,8 @@ use tauri::{
     Runtime,
 };
 
+mod update;
+
 /// Keeps the webview inside the bundled app.
 ///
 /// The webview renders untrusted log content, so it must never be able to
@@ -30,6 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(navigation_guard())
+        .invoke_handler(tauri::generate_handler![update::check_latest_release])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

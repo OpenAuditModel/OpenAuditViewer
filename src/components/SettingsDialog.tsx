@@ -1,10 +1,13 @@
 /**
  * Settings, About and Updates in one small dialog.
  *
- * The Updates section is deliberately inert: this build has no update
- * channel, and a "check for updates" button that has nothing honest to
- * check against would be theater. When releases exist somewhere stable,
- * a version check goes here — carrying a version number and nothing else.
+ * The update check is the only thing in this application that opens a socket,
+ * and it does so only from the button below. There is no check on launch, no
+ * timer and nothing remembered between runs, so an operator who never presses
+ * it runs an app that never reaches the network. The request is made by Rust
+ * against a constant URL and carries a User-Agent and nothing else; see
+ * `src-tauri/src/update.rs` for why it exists at all and what it deliberately
+ * does not send.
  */
 import { useEffect, useState } from "react";
 import { getName, getTauriVersion, getVersion } from "@tauri-apps/api/app";
@@ -17,6 +20,7 @@ import {
   type ThemePreference,
 } from "../lib/settings";
 import { ALL_PROFILES } from "../lib/profiles";
+import { checkForUpdate, type UpdateState } from "../lib/update";
 
 interface Props {
   readonly open: boolean;
@@ -29,12 +33,31 @@ const THEME_OPTIONS: ReadonlyArray<{ value: ThemePreference; label: string }> = 
   { value: "dark", label: "Dark" },
 ];
 
+/** One line describing the result, and never "up to date" for an answer that could not be read. */
+function updateMessage(state: UpdateState): string {
+  switch (state.status) {
+    case "idle":
+      return "";
+    case "checking":
+      return "asking github.com…";
+    case "current":
+      return `${state.version} is the latest published release`;
+    case "behind":
+      return `${state.latest} is available — this build is ${state.current}`;
+    case "ahead":
+      return `this build (${state.current}) is newer than the latest release (${state.latest})`;
+    case "failed":
+      return state.message;
+  }
+}
+
 export function SettingsDialog({ open, onClose }: Props) {
   const [theme, setTheme] = useState<ThemePreference>(loadThemePreference);
   const [appVersion, setAppVersion] = useState("…");
   const [tauriVersion, setTauriVersion] = useState("…");
   const [appName, setAppName] = useState("OpenAuditViewer");
   const [layoutCount, setLayoutCount] = useState(0);
+  const [update, setUpdate] = useState<UpdateState>({ status: "idle" });
 
   useEffect(() => {
     if (!open) {
@@ -158,9 +181,33 @@ export function SettingsDialog({ open, onClose }: Props) {
         <div className="dialog-section">
           <h4>Updates</h4>
           <p className="dialog-note">
-            This build has no update channel yet — updating means replacing the executable with a
-            newer build. An update check will be added once releases are published somewhere it can
-            honestly point at; it will send a version number and no event data.
+            This is the only thing in the application that reaches the network, and only when you
+            press the button. It asks GitHub for the latest published release and compares it with
+            this build. Nothing about the archive on screen is sent, nothing is checked
+            automatically, and nothing is remembered.
+          </p>
+          <div className="sweep-row">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={update.status === "checking"}
+              onClick={() => {
+                setUpdate({ status: "checking" });
+                void checkForUpdate(appVersion).then(setUpdate);
+              }}
+            >
+              {update.status === "checking" ? "Checking…" : "Check for updates"}
+            </button>
+            <span className="detail-note-inline">{updateMessage(update)}</span>
+          </div>
+          {update.status === "behind" ? (
+            <div className="about-links">{link(update.url, `Open ${update.latest} on GitHub`)}</div>
+          ) : null}
+          <p className="dialog-note">
+            Updating means replacing the executable with a newer build; there is no automatic
+            installer. Running an old build is a correctness question and not only a convenience
+            one: the analysis engines come from a pinned release, so an old build evaluates against
+            an old schema and old profiles.
           </p>
         </div>
       </div>

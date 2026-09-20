@@ -9,6 +9,28 @@ as such.
 
 ## Unreleased
 
+### Added — an update check, on a button and nowhere else
+
+Settings gains a check that asks GitHub for the latest published release and compares it with this
+build. It runs from the button and from nothing else: no check on launch, no timer, no background
+request, nothing remembered between runs. An operator who never presses it runs an application that
+never opens a socket, which is why this is a button rather than a setting to turn off.
+
+Why a verification tool needs one: the analysis engines come from a pinned release, so an old build
+evaluates against an old schema and old profiles. Version 0.5.0 of this app fixed a case where a
+signature it could not check was reported as verified. Knowing you are behind is a correctness
+question here, not a convenience.
+
+What it sends is nothing. The request is made by Rust against a constant URL — the webview cannot
+supply one, and the Content-Security-Policy still forbids the frontend from reaching the network at
+all, so this cannot become a general HTTP client for a page that renders untrusted log content. It
+carries a User-Agent and no query, body, cookies or credentials. Two strings are read out of the
+response and neither is rendered as markup or opened without a second click. SECURITY.md now
+describes both outbound actions rather than claiming there is one.
+
+A tag the check cannot read is reported as unreadable, never as up to date, and versions are
+compared numerically so that 0.10.0 is not mistaken for older than 0.9.0.
+
 ### Added — the Coverage tab
 
 The Events tab answers whether one event conforms. This answers what a reviewer asks about a whole

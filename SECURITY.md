@@ -34,11 +34,25 @@ compromise the machine it is read on.
 
 That shapes the design:
 
-- **No egress.** The app never transmits audit content: no telemetry, no crash reporting and no
-  remote validation service, including the project's own. Opening a documented external link hands
-  a URL to the system browser; that is the only outbound action. The invariant is about where data
-  goes, not about whether a socket exists — anything the app reads, it reads from a source the
-  operator selected.
+- **No egress of audit content.** The app never transmits what it reads: no telemetry, no crash
+  reporting and no remote validation service, including the project's own. The invariant is about
+  where data goes, not about whether a socket exists — anything the app reads, it reads from a
+  source the operator selected.
+
+  Two outbound actions exist, both requiring a click. Opening a documented external link hands a URL
+  to the system browser. **Checking for updates** issues one HTTPS GET to
+  `api.github.com/repos/OpenAuditModel/OpenAuditViewer/releases/latest`, from the button in Settings
+  and from nowhere else. It carries a User-Agent and nothing else: no query, no body, no cookies, no
+  credentials, and nothing about the archive on screen or the machine. It is never performed on
+  launch, on a timer, or in the background, and nothing about it is remembered between runs — an
+  operator who never presses it runs an application that never opens a socket.
+
+  The request is made by Rust against a constant URL. The webview cannot supply one, and the
+  Content-Security-Policy still forbids the frontend from reaching the network at all, so this
+  cannot become a general HTTP client reachable from a page that renders untrusted log content.
+  Exactly two strings are read out of the response, a tag and a URL, and neither is rendered as
+  markup or opened without a second click.
+
 - **Filesystem access is scoped to what was picked.** The Tauri capabilities grant no static path.
   Reading is possible only within the folder chosen in the native dialog, writing only to the file
   chosen in the save dialog.

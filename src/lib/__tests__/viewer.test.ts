@@ -11,6 +11,7 @@ import { verifyEventIntegrity } from "../integrity/verify-event";
 import { verifyChains } from "../integrity/chain";
 import { ALL_PROFILES, checkProfile } from "../profiles";
 import { governsNothing, summariseArchiveCoverage } from "../coverage";
+import { compareVersions, compareWithRelease, parseVersion } from "../update";
 import { buildFlowTopology, buildTraceGroups } from "../trace";
 import type { LoadedEvent } from "../types";
 
@@ -552,5 +553,53 @@ describe("archive coverage", () => {
         );
       }
     }
+  });
+});
+
+describe("update check", () => {
+  it("orders versions numerically, so 0.10.0 is newer than 0.9.0", () => {
+    // String comparison puts 0.10.0 before 0.9.0, which is the classic way a
+    // version check tells someone they are current while they are behind.
+    expect(compareVersions([0, 10, 0], [0, 9, 0])).toBeGreaterThan(0);
+    expect(compareVersions([1, 0, 0], [0, 99, 99])).toBeGreaterThan(0);
+    expect(compareVersions([0, 5], [0, 5, 0])).toBe(0);
+    expect(compareVersions([0, 5, 1], [0, 5, 2])).toBeLessThan(0);
+  });
+
+  it("reads a tag with or without its v, and refuses anything else", () => {
+    expect(parseVersion("v0.5.1")).toEqual([0, 5, 1]);
+    expect(parseVersion(" 0.5.1 ")).toEqual([0, 5, 1]);
+    for (const bad of ["", "nightly", "0.5.1-rc.1", "v", "0.5.x", "2026-09-20"]) {
+      expect(parseVersion(bad), bad).toBeUndefined();
+    }
+  });
+
+  it("reports behind, current and ahead", () => {
+    const release = (tag: string) => ({ tag, url: "https://github.com/o/r/releases/tag/" + tag });
+
+    expect(compareWithRelease("0.4.0", release("v0.5.1"))).toEqual({
+      status: "behind",
+      current: "0.4.0",
+      latest: "v0.5.1",
+      url: "https://github.com/o/r/releases/tag/v0.5.1",
+    });
+    expect(compareWithRelease("0.5.1", release("v0.5.1"))).toEqual({
+      status: "current",
+      version: "0.5.1",
+    });
+    expect(compareWithRelease("0.6.0", release("v0.5.1")).status).toBe("ahead");
+  });
+
+  it("reports an unreadable answer as failed, never as up to date", () => {
+    // The check exists to say whether this build is behind. An answer it
+    // cannot read is not an answer that it is not.
+    const state = compareWithRelease("0.5.1", {
+      tag: "nightly-2026-09-20",
+      url: "https://github.com/o/r",
+    });
+    expect(state.status).toBe("failed");
+    expect(state.status === "failed" && state.message).toContain("nightly-2026-09-20");
+
+    expect(compareWithRelease("…", { tag: "v0.5.1", url: "u" }).status).toBe("failed");
   });
 });
