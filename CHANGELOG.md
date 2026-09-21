@@ -7,7 +7,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 While the project is **experimental**, breaking changes are possible in any release and are labelled
 as such.
 
-## Unreleased
+## 0.5.0 - 2026-09-21
+
+Built against `@openauditmodel/cli` 0.5.1.
+
+`SECURITY.md`'s supported-versions table named 0.2.x as current, two releases after it stopped being
+true, because nothing checked it. Three tests now keep the release metadata honest: the table names
+exactly this build's minor as current, the four files the release workflow compares carry one
+version between them, and the changelog has a dated section for it.
+
+This release is about what an archive says as a whole, and about being precise on what none of it
+establishes. Three views are new — Coverage, the archive report, and "Where to start" — and each was
+built against the same rule: this application reports the published engines' verdicts and never
+invents one of its own. The schema and the ten profiles are no longer copied into this repository at
+all; they are imported from the pinned release, so the engines and the documents they evaluate
+cannot come from different versions. Settings gains the first thing in this app that opens a socket,
+on a button and nowhere else.
+
+An independent review of the whole delta ran before the tag and found thirteen real problems,
+including a report that counted a schema-invalid event as verified and a coverage tab whose counters
+were not the CLI's. All are fixed, each with a test, and the entry below records them rather than
+quietly folding them into the features they belong to.
 
 ### Fixed — six corrections an independent review found before release
 
