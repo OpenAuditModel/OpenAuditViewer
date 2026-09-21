@@ -1518,3 +1518,24 @@ body,
     break-inside: avoid;
   }
 }
+
+/* "Where to start": the existing findings, grouped by where they came from.
+   Deliberately plain — no bars, no proportions, nothing that reads as a score. */
+.triage-group {
+  margin-top: 0.75rem;
+}
+
+.triage-title {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+}
+
+.triage-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}

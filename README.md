@@ -85,7 +85,12 @@ incident status and no reason for a priority change. Core validity and domain co
 separate questions, and the panel keeps them separate.
 
 **Overview** — totals, a per-application breakdown that filters the table when clicked, privacy
-findings by severity and by rule, chain health, and a button to verify every digest at once.
+findings by severity and by rule, chain health, a button to verify every digest at once, and
+**Where to start**: the same findings grouped by the file, event name and application they came
+from, so the work has an order. There is no quality score anywhere in this application, and that is
+deliberate — aggregating validity, privacy, tamper-evidence and conformance into one number turns
+four honest answers into a target, and the specification's own design principles refuse to treat a
+fuller event as a better one.
 
 **Report** — one page carrying everything the application established about the folder, and
 everything it did not: what was loaded, what validated, what the privacy linter found, what verified,

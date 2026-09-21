@@ -15,6 +15,7 @@ import { readIntegrity, verifyEventIntegrity } from "../lib/integrity/verify-eve
 import { verifyChains } from "../lib/integrity/chain";
 import type { ChainReport } from "../lib/integrity/types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
+import { triage, type Concentration } from "../lib/triage";
 
 interface Props {
   readonly events: readonly LoadedEvent[];
@@ -181,6 +182,8 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
     }
     return [...byRule.entries()].sort((left, right) => right[1] - left[1]).slice(0, 5);
   }, [events]);
+
+  const problems = useMemo(() => triage(events), [events]);
 
   const totalFindings = events.reduce((sum, row) => sum + row.privacyFindings.length, 0);
   const invalidCount = events.length - events.filter((row) => row.valid).length;
@@ -420,6 +423,96 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
           </div>
         </div>
       </div>
+
+      <div className="panel">
+        <div className="block-head">
+          <span className="label">Where to start</span>
+          <span className="muted">not a score</span>
+        </div>
+        <div className="block-body">
+          {problems.clean ? (
+            <p className="detail-note">
+              No event failed validation and the privacy linter found nothing, so there is nowhere
+              in particular to start. That is not a statement that the archive is complete or that
+              its events are true — only that these two checks found nothing to point at.
+            </p>
+          ) : (
+            <>
+              <p className="detail-note">
+                The same findings shown above, grouped by where they came from, so the work has an
+                order. These are counts of what the engines already reported; nothing here is a
+                score, a grade or a judgement this application makes on its own.
+              </p>
+              <ConcentrationList
+                title="Files holding invalid events"
+                rows={problems.files}
+                measure={(entry) => `${entry.invalid} of ${entry.events} invalid`}
+              />
+              <ConcentrationList
+                title="Event names carrying privacy findings"
+                rows={problems.names}
+                measure={(entry) =>
+                  `${entry.findings} finding${entry.findings === 1 ? "" : "s"} across ${entry.flagged} of ${entry.events} events`
+                }
+              />
+              <ConcentrationList
+                title="Applications with either"
+                rows={problems.applications}
+                measure={(entry) =>
+                  [
+                    entry.invalid > 0 ? `${entry.invalid} invalid` : undefined,
+                    entry.findings > 0 ? `${entry.findings} findings` : undefined,
+                  ]
+                    .filter((part) => part !== undefined)
+                    .join(" · ")
+                }
+                onSelect={onSelectApplication}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One ranked list, or nothing when there is nothing to rank. */
+function ConcentrationList({
+  title,
+  rows,
+  measure,
+  onSelect,
+}: {
+  readonly title: string;
+  readonly rows: readonly Concentration[];
+  readonly measure: (entry: Concentration) => string;
+  readonly onSelect?: (key: string) => void;
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <div className="triage-group">
+      <div className="triage-title">{title}</div>
+      {rows.map((entry) =>
+        onSelect === undefined ? (
+          <div className="triage-row" key={entry.key}>
+            <span className="bar-name">{entry.key}</span>
+            <span className="bar-flag warn">{measure(entry)}</span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="bar-row"
+            key={entry.key}
+            title={`Show only ${entry.key}`}
+            onClick={() => onSelect(entry.key)}
+          >
+            <span className="bar-name">{entry.key}</span>
+            <span className="bar-flag warn">{measure(entry)}</span>
+          </button>
+        ),
+      )}
     </div>
   );
 }
