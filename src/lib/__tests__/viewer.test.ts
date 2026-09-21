@@ -12,8 +12,9 @@ import { verifyChains } from "../integrity/chain";
 import { ALL_PROFILES, checkProfile } from "../profiles";
 import { governsNothing, summariseArchiveCoverage } from "../coverage";
 import { compareVersions, compareWithRelease, parseVersion } from "../update";
+import { buildArchiveReport } from "../report";
 import { buildFlowTopology, buildTraceGroups } from "../trace";
-import type { LoadedEvent } from "../types";
+import type { LoadedEvent, LoadSummary } from "../types";
 
 function minimalEvent(
   id: string,
@@ -601,5 +602,147 @@ describe("update check", () => {
     expect(state.status === "failed" && state.message).toContain("nightly-2026-09-20");
 
     expect(compareWithRelease("…", { tag: "v0.5.1", url: "u" }).status).toBe("failed");
+  });
+});
+
+describe("archive report", () => {
+  function loaded(
+    id: string,
+    event: Record<string, unknown> | null,
+    overrides: Partial<LoadedEvent> = {},
+  ): LoadedEvent {
+    return {
+      rowId: id,
+      sourceFile: "a.jsonl",
+      sourceFormat: "jsonl",
+      event,
+      valid: event !== null,
+      errors: [],
+      privacyFindings: [],
+      ...overrides,
+    };
+  }
+
+  const summary = {
+    filesRead: 2,
+    filesFound: 3,
+    filesFailed: [{ path: "broken.json", reason: "unreadable" }],
+    filesSkipped: [],
+    directoriesSkipped: [],
+    directoriesFailed: [],
+    truncated: false,
+    eventLimit: 100000,
+  } as unknown as LoadSummary;
+
+  it("counts the archive, the validity and the privacy findings it was given", async () => {
+    const clean = loaded("r1", minimalEvent("018f1b70-2c18-7f3a-b46d-000000000060"));
+    const broken = loaded("r2", null, { valid: false, sourceFile: "bad.jsonl" });
+    const flagged = loaded("r3", minimalEvent("018f1b70-2c18-7f3a-b46d-000000000061"), {
+      privacyFindings: [
+        {
+          ruleId: "OAM-PRIV-001",
+          severity: "critical",
+          confidence: "high",
+          category: "credential",
+          path: "/metadata/password",
+          message: "looks like a credential",
+        },
+      ] as LoadedEvent["privacyFindings"],
+    });
+
+    const report = await buildArchiveReport([clean, broken, flagged], summary, "/logs");
+
+    expect(report.archive.events).toBe(3);
+    expect(report.archive.folder).toBe("/logs");
+    expect(report.archive.unreadableFiles).toBe(1);
+    expect(report.validity.valid).toBe(2);
+    expect(report.validity.invalid).toBe(1);
+    expect(report.validity.worstFiles).toEqual([{ file: "bad.jsonl", invalid: 1 }]);
+    expect(report.privacy.findings).toBe(1);
+    expect(report.privacy.eventsAffected).toBe(1);
+    expect(report.privacy.bySeverity.critical).toBe(1);
+    expect(report.privacy.byRule).toEqual([{ ruleId: "OAM-PRIV-001", count: 1 }]);
+  });
+
+  /** Seals an event the way a producer would, through this app's own digest path. */
+  async function seal(
+    id: string,
+    sequence: number,
+    previousHash?: string,
+  ): Promise<Record<string, unknown>> {
+    const event = minimalEvent(id, {
+      sequence,
+      integrity: {
+        canonicalization: "RFC8785",
+        hashAlgorithm: "SHA-256",
+        chainId: "chain-report-1",
+        ...(previousHash === undefined ? {} : { previousHash }),
+      },
+    });
+    const hash = await calculateDigest(event, "SHA-256");
+    return { ...event, integrity: { ...(event["integrity"] as object), hash } };
+  }
+
+  it("reports a chain whose tail was deleted as intact, which is what the limits section is for", async () => {
+    // The report must not quietly imply completeness. The engine says intact,
+    // because a chain whose most recent entries were removed is internally
+    // consistent, and the page says in prose what that does not establish.
+    const first = await seal("018f1b70-2c18-7f3a-b46d-000000000071", 1);
+    const second = await seal(
+      "018f1b70-2c18-7f3a-b46d-000000000072",
+      2,
+      (first["integrity"] as { hash: string }).hash,
+    );
+    // A third event existed and is not here; nothing internal can see that.
+    const report = await buildArchiveReport(
+      [loaded("c1", first), loaded("c2", second)],
+      summary,
+      undefined,
+    );
+
+    expect(report.integrity.declared).toBe(2);
+    expect(report.integrity.verified).toBe(2);
+    expect(report.integrity.failed).toEqual([]);
+    expect(report.integrity.chains?.intact).toBe(true);
+  });
+
+  it("names the events whose digests failed, by row and finding kind, never by content", async () => {
+    const sealed = await seal("018f1b70-2c18-7f3a-b46d-000000000073", 1);
+    const tampered = {
+      ...sealed,
+      resource: { type: "configuration", id: "secret-looking-marker" },
+    };
+
+    const report = await buildArchiveReport([loaded("c9", tampered)], summary, undefined);
+
+    expect(report.integrity.verified).toBe(0);
+    expect(report.integrity.failed).toEqual([{ label: "c9", kinds: ["hash-mismatch"] }]);
+  });
+
+  it("carries the profiles that were refused, not only the ones evaluated", async () => {
+    const report = await buildArchiveReport(
+      [loaded("r1", minimalEvent("018f1b70-2c18-7f3a-b46d-000000000080"))],
+      summary,
+      undefined,
+    );
+    // None today, and the shape is what the page prints when there is one.
+    expect(Array.isArray(report.refusedProfiles)).toBe(true);
+    expect(report.profiles.length).toBe(10);
+  });
+
+  it("carries no event content at all, because a printed page travels", async () => {
+    // The report holds only what it prints. The first version of it reached a
+    // profile's governed rows, and a row carries its whole event — invisible
+    // on screen, and present in anything that serialised the structure.
+    const marked = minimalEvent("018f1b70-2c18-7f3a-b46d-000000000090", {
+      resource: { type: "configuration", id: "distinctive-marker-value" },
+      metadata: { note: "another-marker" },
+    });
+    const report = await buildArchiveReport([loaded("r1", marked)], summary, undefined);
+    const rendered = JSON.stringify(report);
+
+    expect(rendered).not.toContain("distinctive-marker-value");
+    expect(rendered).not.toContain("another-marker");
+    expect(rendered).not.toContain("018f1b70-2c18-7f3a-b46d-000000000090");
   });
 });

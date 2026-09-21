@@ -87,6 +87,14 @@ separate questions, and the panel keeps them separate.
 **Overview** — totals, a per-application breakdown that filters the table when clicked, privacy
 findings by severity and by rule, chain health, and a button to verify every digest at once.
 
+**Report** — one page carrying everything the application established about the folder, and
+everything it did not: what was loaded, what validated, what the privacy linter found, what verified,
+which profiles reached it, and a closing section naming what none of it establishes. It prints
+through the browser's own print dialog, so what happens to the page is the operator's decision and
+nothing is written to disk by the app. The conformance-is-not-compliance line is printed, not shown
+only on screen, because a report is on its way to an auditor exactly when that line is easiest to
+lose. It is a page, not a document format.
+
 **Coverage** — which of the ten profiles reach this archive at all, and what each one actually
 checked: events governed, conforming and violating, rules selected, and the rules that selected an
 event and then required nothing of it because a condition never held. Every number is the per-event

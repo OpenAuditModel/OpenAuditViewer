@@ -9,6 +9,28 @@ as such.
 
 ## Unreleased
 
+### Added — the archive report
+
+One page covering what was loaded, what validated against the canonical schema, what the privacy
+linter found by rule and severity, what verified, which profiles reached the archive — and a closing
+section naming what none of it establishes. It prints through the browser's print dialog, so the
+operator decides what becomes of the page; the app writes nothing.
+
+A printed page outlives the session that produced it and travels further than the person who made
+it, which shapes every choice in it. The limits are not an appendix: a chain whose most recent
+entries were deleted is reported intact, as it must be, and the same section says that seeing such a
+deletion requires a checkpoint this app does not read, and that no signature was checked because
+this app holds no key. The conformance-is-not-compliance line is printed rather than shown only on
+screen, because a report is on its way to an auditor exactly when that line is easiest to lose.
+
+The report holds only what it prints. The first version reached a profile's governed rows to reuse
+the coverage shape, and a row carries its whole event — invisible on screen and present in anything
+that serialised the structure. A test now asserts that no event content appears anywhere in it.
+
+It is a page, not a document format. The canonical repository's `inspect` will define the portable
+Audit Analysis Result, and this app should consume that rather than invent a shape three releases
+early.
+
 ### Added — an update check, on a button and nowhere else
 
 Settings gains a check that asks GitHub for the latest published release and compares it with this
