@@ -189,6 +189,13 @@ export function Report({ events, summary, folder }: Props) {
               </tbody>
             </table>
           ) : null}
+          {validity.filesWithInvalid > validity.worstFiles.length ? (
+            <p className="report-note">
+              and {validity.filesWithInvalid - validity.worstFiles.length} further file
+              {validity.filesWithInvalid - validity.worstFiles.length === 1 ? "" : "s"} holding
+              invalid events, not listed here.
+            </p>
+          ) : null}
         </section>
 
         <section>
@@ -252,11 +259,14 @@ export function Report({ events, summary, folder }: Props) {
               <Row label="Digests that failed" value={integrity.failed.length} />
               {integrity.chains !== undefined ? (
                 <>
-                  <Row label="Chains checked" value={integrity.chains.chains.length} />
-                  <Row
-                    label="Chains intact"
-                    value={integrity.chains.chains.filter((chain) => chain.intact).length}
-                  />
+                  <Row label="Chains checked" value={integrity.chains.checked} />
+                  <Row label="Chains intact" value={integrity.chains.intact} />
+                  {integrity.chains.unassigned > 0 ? (
+                    <Row
+                      label="Chain members that could not be verified"
+                      value={integrity.chains.unassigned}
+                    />
+                  ) : null}
                 </>
               ) : null}
             </tbody>
@@ -270,7 +280,7 @@ export function Report({ events, summary, folder }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {integrity.failed.slice(0, 20).map((entry) => (
+                {integrity.failed.map((entry) => (
                   <tr key={entry.label}>
                     <td>{entry.label}</td>
                     <td>{entry.kinds.join(", ")}</td>
@@ -278,6 +288,19 @@ export function Report({ events, summary, folder }: Props) {
                 ))}
               </tbody>
             </table>
+          ) : null}
+          {integrity.failedTotal > integrity.failed.length ? (
+            <p className="report-note">
+              and {integrity.failedTotal - integrity.failed.length} more not listed here.
+            </p>
+          ) : null}
+          {integrity.chains !== undefined && !integrity.chains.allIntact ? (
+            <p className="report-warning">
+              <strong>Not every chain is intact.</strong>{" "}
+              {integrity.chains.unassigned > 0
+                ? `${integrity.chains.unassigned} event${integrity.chains.unassigned === 1 ? "" : "s"} declaring a chain could not be verified, so the chains they belong to are not established.`
+                : "At least one chain has a broken link or a modified event."}
+            </p>
           ) : null}
           <p className="report-note">
             Verification detects modification of the events that were supplied. It does not prove

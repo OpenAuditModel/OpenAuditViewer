@@ -103,7 +103,8 @@ lose. It is a page, not a document format.
 **Coverage** — which of the ten profiles reach this archive at all, and what each one actually
 checked: events governed, conforming and violating, rules selected, and the rules that selected an
 event and then required nothing of it because a condition never held. Every number is the per-event
-engine's, grouped, so the tab cannot become a second opinion. A profile that governs nothing is
+engine's, grouped — the same counters `auditmodel check-coverage` reports for the same folder,
+events the core schema rejects included, so the tab cannot become a second opinion. A profile that governs nothing is
 reported as governing nothing, never as satisfied — an event no rule selects is **not applicable**,
 and not applicable is not conformance. Nothing here is rendered as a percentage or a grade: "7 of 15
 rules selected" describes this archive, not its quality. Measuring is a button, because it is a

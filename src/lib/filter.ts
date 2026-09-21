@@ -11,6 +11,18 @@ import type { LoadedEvent } from "./types";
 /** Sentinel for "no restriction" in the single-choice filters. */
 export const ANY = "__all__";
 
+/**
+ * Label for events carrying no `application.name`.
+ *
+ * Exported because three places need the same string: the Overview breakdown
+ * that groups by it, the triage list that ranks by it, and `App.tsx`, which
+ * turns a click on that row into "no application filter" rather than a filter
+ * for a literal application of this name. They disagreed once — triage said
+ * "(unknown application)" — and clicking that row filtered the table to
+ * nothing while the dropdown still read "All applications".
+ */
+export const UNKNOWN_APPLICATION = "(unknown)";
+
 export type ValidityFilter = "all" | "valid" | "invalid";
 
 export interface EventFilter {

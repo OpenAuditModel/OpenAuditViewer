@@ -97,30 +97,42 @@ describe("the corpus this parity suite runs on", () => {
     expect(corpus.length).toBeGreaterThan(300);
   });
 
-  test("is the release the app itself imports, schema and profiles alike", () => {
-    // Split provenance — engines from one release, the documents they evaluate
-    // from another — used to be prevented by comparing vendored copies against
-    // the package. There are no copies now: both are imported from it, so this
-    // reads the same files back from disk and asserts the app is holding what
-    // the package ships rather than something bundled from elsewhere.
-    const packageSchema = JSON.parse(
-      readFileSync(path.join(packageRoot, "schemas", "v0.1", "audit-event.schema.json"), "utf8"),
-    ) as { $id: string };
-    expect(canonicalSchema).toEqual(packageSchema);
-
-    for (const profile of ALL_PROFILES) {
-      const published = JSON.parse(
-        readFileSync(path.join(packageRoot, "profiles", profile.name, "profile.json"), "utf8"),
-      ) as unknown;
-      expect({ [profile.name]: profile }).toEqual({ [profile.name]: published });
-    }
-    expect(ALL_PROFILES.length + REFUSED_PROFILES.length).toBe(
-      readdirSync(path.join(packageRoot, "profiles"), { withFileTypes: true }).filter(
+  test("the registry holds every profile the package publishes, by name", () => {
+    // What this can and cannot prove is worth stating, because the obvious
+    // assertion is worthless here. Comparing the imported schema against the
+    // file read from `packageRoot` compares a file with itself: the import
+    // specifier and the path resolve to the same bytes, and no alias in
+    // `vite.config.ts` can make them differ. What is still worth asserting is
+    // membership — a profile published upstream that nobody added to the
+    // registry would otherwise be silently absent, which is the failure the
+    // deleted "vendored equals the release" assertion used to catch.
+    const published = readdirSync(path.join(packageRoot, "profiles"), { withFileTypes: true })
+      .filter(
         (entry) =>
           entry.isDirectory() &&
           existsSync(path.join(packageRoot, "profiles", entry.name, "profile.json")),
-      ).length,
-    );
+      )
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right, "en"));
+
+    const known = [
+      ...ALL_PROFILES.map((profile) => profile.name),
+      ...REFUSED_PROFILES.map((profile) => profile.name),
+    ].sort((left, right) => left.localeCompare(right, "en"));
+
+    expect(known).toEqual(published);
+  });
+
+  test("the validator and the engines are bound to one schema", () => {
+    // The precompiled validator is generated from the package's schema by
+    // `tools/generate-validator.mjs`; the engines are bound to the same
+    // specifier in `engines.ts`. This is what says the generated code and the
+    // schema it claims to implement came from one release.
+    const packageSchema = JSON.parse(
+      readFileSync(path.join(packageRoot, "schemas", "v0.1", "audit-event.schema.json"), "utf8"),
+    ) as { $id: string };
+    expect(canonicalSchema.$id).toBe(packageSchema.$id);
+    expect(validator.schemaId).toBe(packageSchema.$id);
   });
 
   test("is pinned to an exact version, not a range", () => {

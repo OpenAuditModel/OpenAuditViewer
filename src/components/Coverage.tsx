@@ -78,7 +78,7 @@ export function Coverage({ events, onSelectRow }: Props) {
           {state.status === "done" ? (
             <span className="muted">
               {state.report.checked} events checked
-              {state.report.skipped > 0 ? `, ${state.report.skipped} skipped` : ""}
+              {state.report.unparsed > 0 ? `, ${state.report.unparsed} unreadable` : ""}
             </span>
           ) : null}
         </div>

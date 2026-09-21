@@ -42,24 +42,26 @@ export interface ProfileCoverageRow {
 export interface CoverageReport {
   /** One entry per profile this build evaluates, in the order it lists them. */
   readonly profiles: readonly ProfileCoverageRow[];
-  /** Events offered to the profiles: schema-valid rows carrying a parsed event. */
+  /** Events offered to the profiles: every row carrying a parsed event. */
   readonly checked: number;
-  /** Rows not offered, because a profile never evaluates an event the core rejects. */
-  readonly skipped: number;
+  /** Rows with nothing to offer at all — the text could not be parsed as JSON. */
+  readonly unparsed: number;
 }
 
 /**
- * Rows a profile can be asked about.
+ * Rows a profile can be asked about: every row that parsed as JSON.
  *
- * `checkProfile` is called with `validateCore: false` because validation
- * already ran at load time and its verdict is on the row; re-validating every
- * event against every profile would repeat the most expensive step ten times
- * for an answer already known. A row the core rejected is not offered at all:
- * the engine would report `core-invalid` for it, which says nothing about the
- * profile and would count the same row as ungoverned ten times over.
+ * A core-invalid row goes in too. `summariseCoverage` is written to receive
+ * the whole set — it counts `core-invalid` separately and still counts such an
+ * event's name among the names it saw — so withholding those rows made this
+ * tab's counters differ from `auditmodel check-coverage` for the same folder.
+ * One conforming event beside one core-invalid one reported "1 of 1 names
+ * governed" here and "2 distinct, 1 governed, 1 ungoverned" there. An app
+ * quietly answering differently from the tool it claims to agree with is a
+ * defect even when its answer looks tidier.
  */
 function checkable(events: readonly LoadedEvent[]): LoadedEvent[] {
-  return events.filter((row) => row.event !== null && row.valid);
+  return events.filter((row) => row.event !== null);
 }
 
 /** Runs every profile over every checkable event and summarises each. */
@@ -71,8 +73,12 @@ export function summariseArchiveCoverage(
   const documents = rows.map((row) => row.event as Record<string, unknown>);
 
   const covered = profiles.map((profile) => {
+    // Core validation runs for rows the loader already rejected, so the engine
+    // reaches its own `core-invalid` verdict rather than being told to skip a
+    // step whose answer it needs. For a row the loader validated, it is a
+    // repeat of a known answer and the verdict is the same either way.
     const results = rows.map((row) =>
-      checkProfile(row.event, row.sourceFile, profile, { validateCore: false }),
+      checkProfile(row.event, row.sourceFile, profile, { validateCore: !row.valid }),
     );
     const governed = rows.flatMap((row, index) => {
       const result = results[index] as ProfileCheckResult;
@@ -83,7 +89,7 @@ export function summariseArchiveCoverage(
     return { coverage: summariseCoverage(documents, results, profile), governed };
   });
 
-  return { profiles: covered, checked: rows.length, skipped: events.length - rows.length };
+  return { profiles: covered, checked: rows.length, unparsed: events.length - rows.length };
 }
 
 /** True when no profile in the report governs a single event. */

@@ -14,6 +14,7 @@ import { applyThemePreference, loadThemePreference } from "./lib/settings";
 import {
   ANY,
   EMPTY_FILTER,
+  UNKNOWN_APPLICATION,
   applicationOptions,
   filterEvents,
   outcomeOptions,
@@ -82,9 +83,9 @@ function App() {
   }
 
   function showApplication(name: string): void {
-    // "(unknown)" is the label the breakdown gives events with no application
+    // UNKNOWN_APPLICATION is the label the breakdown gives events with no application
     // name; it is not a value any event carries, so it filters to nothing.
-    setFilterField("application", name === "(unknown)" ? ANY : name);
+    setFilterField("application", name === UNKNOWN_APPLICATION ? ANY : name);
     setTab("events");
   }
 

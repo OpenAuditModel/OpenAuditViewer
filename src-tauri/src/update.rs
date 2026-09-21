@@ -12,8 +12,9 @@
 //!   content. The Content-Security-Policy still forbids the frontend from
 //!   reaching the network at all.
 //! * The request carries no query, no body, no cookies and no credentials —
-//!   only the User-Agent the GitHub API requires. Nothing about the archive on
-//!   screen, or the machine, is transmitted.
+//!   only the User-Agent the GitHub API requires and an `Accept` header naming
+//!   its media type. Nothing about the archive on screen, or the machine, is
+//!   transmitted.
 //! * Exactly two strings are read out of the response, and neither is ever
 //!   rendered as markup or handed to a browser without the user clicking.
 //!
@@ -80,4 +81,43 @@ pub async fn check_latest_release() -> Result<LatestRelease, String> {
         tag: release.tag_name,
         url: release.html_url,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The URL is a constant, and the webview cannot supply one. If that ever
+    /// became a parameter, this command would be a general HTTP client
+    /// reachable from a page that renders untrusted log content.
+    #[test]
+    fn asks_github_for_this_repository_over_https() {
+        assert!(RELEASES_API.starts_with("https://api.github.com/"));
+        assert!(RELEASES_API.ends_with("/OpenAuditModel/OpenAuditViewer/releases/latest"));
+        assert!(!RELEASES_API.contains('?'), "no query is ever sent");
+    }
+
+    /// A check that hangs is a dialog that hangs.
+    #[test]
+    fn gives_up_rather_than_waiting() {
+        assert!(TIMEOUT <= Duration::from_secs(30));
+    }
+
+    /// Only two fields are read out of the answer, and unknown ones are
+    /// ignored rather than being an error: GitHub adds fields.
+    #[test]
+    fn reads_two_fields_and_ignores_the_rest() {
+        let body = r#"{"tag_name":"v0.5.0","html_url":"https://example.invalid/r","extra":1}"#;
+        let release: GithubRelease = serde_json::from_str(body).expect("parses");
+        assert_eq!(release.tag_name, "v0.5.0");
+        assert_eq!(release.html_url, "https://example.invalid/r");
+    }
+
+    /// An answer missing either field is an error, never a silent default —
+    /// an empty tag would compare as unreadable rather than as up to date.
+    #[test]
+    fn refuses_an_answer_missing_either_field() {
+        assert!(serde_json::from_str::<GithubRelease>(r#"{"tag_name":"v0.5.0"}"#).is_err());
+        assert!(serde_json::from_str::<GithubRelease>(r#"{"html_url":"u"}"#).is_err());
+    }
 }
