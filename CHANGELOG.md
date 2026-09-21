@@ -9,6 +9,47 @@ as such.
 
 ## Unreleased
 
+### Fixed — six corrections an independent review found before release
+
+Everything below was already written and passing its own tests; a review of the whole delta since
+0.4.0 found each one, and each carries a test now.
+
+**The archive report counted a schema-invalid event as verified.** It verified digests with schema
+validation switched off, which is right for the Overview sweep — those rows are already known to be
+valid — and wrong here, where the report is handed everything. An event `auditmodel verify-integrity`
+fails as schema-invalid was printed under "Digests verified". SECURITY.md names exactly that case as
+in scope.
+
+**The report's chain summary hid what could not be verified.** It printed chains checked and chains
+intact and stopped, so a chain member the schema rejected — reported as unassigned, leaving its chain
+unestablished — vanished from the page. The page now prints that count and says plainly that not
+every chain is intact.
+
+**The report carried chain identifiers and digests it never printed.** A `ChainReport` holds
+producer-declared chain identifiers, every member's declared and calculated digest and finding detail
+lines. The report now holds four counts instead, and the test that guards this has a sealed chain in
+it, which is why it missed the first time.
+
+**The report and the Overview disagreed about the same folder.** One counted every event with an
+`integrity` object, the other only those declaring a hash. They now use one definition.
+
+**Two printed tables stopped without saying so.** The worst-files table caps at ten and the failed
+digests at twenty; a page that stops silently reads as the whole list to someone holding only the
+paper. Both now print what they left out.
+
+**The Coverage tab's counters were not the CLI's.** It withheld core-invalid rows from
+`summariseCoverage`, which is written to receive every document and counts them itself. One
+conforming event beside one core-invalid one reported "1 of 1 names governed" here and "2 distinct, 1
+governed, 1 ungoverned" in `auditmodel check-coverage`.
+
+Also: "Where to start" labelled application-less events differently from the rest of the app, so
+clicking that row filtered the table to nothing; the parity suite's replacement for the deleted
+vendoring assertion compared a file with itself and now asserts profile membership by name; the
+update check's description claimed it sends only a User-Agent when it also sends `Accept`; the report
+page referenced a CSS custom property that was never defined; the print stylesheet left the app
+shell's fixed height in force, which clips a report at one page; and the update command, the triage
+cap and the report's chain and validity paths had no tests.
+
 ### Added — "Where to start", and no audit-quality score
 
 The Overview tab gains a section grouping the findings already on screen by where they came from:

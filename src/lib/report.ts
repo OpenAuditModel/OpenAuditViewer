@@ -18,7 +18,6 @@
 import { summariseArchiveCoverage } from "./coverage";
 import { verifyChains } from "./integrity/chain";
 import { readIntegrity, verifyEventIntegrity } from "./integrity/verify-event";
-import type { ChainReport } from "./integrity/types";
 import { REFUSED_PROFILES } from "./profiles";
 import type { LoadedEvent, LoadSummary } from "./types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
@@ -40,8 +39,10 @@ export interface ArchiveSection {
 export interface ValiditySection {
   readonly valid: number;
   readonly invalid: number;
-  /** Files holding at least one event the schema rejected, most first. */
+  /** Files holding at least one event the schema rejected, most first, capped. */
   readonly worstFiles: readonly { readonly file: string; readonly invalid: number }[];
+  /** How many files hold invalid events in total, so a truncated table says so. */
+  readonly filesWithInvalid: number;
 }
 
 export interface PrivacySection {
@@ -52,11 +53,23 @@ export interface PrivacySection {
 }
 
 export interface IntegritySection {
-  /** Events declaring an integrity object at all. */
+  /** Events declaring an `integrity.hash`, which is what the Overview counts. */
   readonly declared: number;
   readonly verified: number;
+  /** Failures, capped for the page; `failedTotal` is how many there were. */
   readonly failed: readonly { readonly label: string; readonly kinds: readonly string[] }[];
-  readonly chains: ChainReport | undefined;
+  readonly failedTotal: number;
+  /** Chain counts only. The full report carries chain identifiers and digests. */
+  readonly chains:
+    | {
+        readonly checked: number;
+        readonly intact: number;
+        /** Events carrying a chainId that could not be assigned to a chain at all. */
+        readonly unassigned: number;
+        /** False when any chain is broken or any member could not be verified. */
+        readonly allIntact: boolean;
+      }
+    | undefined;
 }
 
 /**
@@ -89,11 +102,19 @@ export interface ArchiveReport {
   readonly privacy: PrivacySection;
   readonly integrity: IntegritySection;
   readonly profiles: readonly ProfileSection[];
-  /** Events offered to the profiles; a core-invalid row is offered to none. */
-  readonly profilesChecked: number;
   /** Profiles this build refused because it cannot read their rule vocabulary. */
   readonly refusedProfiles: readonly { readonly name: string; readonly profileVersion: string }[];
 }
+
+/**
+ * How many rows each printed table shows.
+ *
+ * A printed table that stops without saying so reads as the whole list to
+ * someone holding only the paper, so both totals are carried beside the rows
+ * and the page prints what it left out.
+ */
+const FILES_SHOWN = 10;
+const FAILED_SHOWN = 20;
 
 function emptySeverities(): Record<Severity, number> {
   return { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
@@ -141,7 +162,8 @@ function validityOf(events: readonly LoadedEvent[]): ValiditySection {
     worstFiles: [...perFile.entries()]
       .map(([file, count]) => ({ file, invalid: count }))
       .sort((left, right) => right.invalid - left.invalid || left.file.localeCompare(right.file))
-      .slice(0, 10),
+      .slice(0, FILES_SHOWN),
+    filesWithInvalid: perFile.size,
   };
 }
 
@@ -155,14 +177,21 @@ export async function buildArchiveReport(
   summary: LoadSummary | undefined,
   folder: string | undefined,
 ): Promise<ArchiveReport> {
+  // The same set the Overview sweeps, defined the same way: a declared hash is
+  // what there is to verify. Counting every event with an `integrity` object
+  // would make the two tabs give different answers about one folder.
   const withIntegrity = events.filter(
-    (row) => row.event !== null && readIntegrity(row.event) !== undefined,
+    (row) => row.event !== null && typeof readIntegrity(row.event)?.hash === "string",
   );
 
   let verified = 0;
   const failed: { label: string; kinds: readonly string[] }[] = [];
   for (const row of withIntegrity) {
-    const result = await verifyEventIntegrity(row.event, row.sourceFile, { validateSchema: false });
+    // Schema validation is left on, unlike the Overview sweep, which runs over
+    // rows already known to be valid. An event the core schema rejects is not
+    // a verified event — `verify-integrity` fails it, and a page that printed
+    // it under "Digests verified" would claim something the CLI does not.
+    const result = await verifyEventIntegrity(row.event, row.sourceFile);
     if (result.verified) {
       verified += 1;
     } else {
@@ -175,10 +204,24 @@ export async function buildArchiveReport(
   );
   const coverage = summariseArchiveCoverage(events);
 
-  const chains =
+  const chainReport =
     chainMembers.length === 0
       ? undefined
       : await verifyChains(chainMembers.map((row) => ({ label: row.rowId, event: row.event })));
+
+  // Counts only. A `ChainReport` carries producer-declared chain identifiers,
+  // every member's declared and calculated digest, and finding detail lines —
+  // none of which the page prints, and all of which would ride along in
+  // anything that serialised this structure.
+  const chains =
+    chainReport === undefined
+      ? undefined
+      : {
+          checked: chainReport.chains.length,
+          intact: chainReport.chains.filter((chain) => chain.intact).length,
+          unassigned: chainReport.unassigned.length,
+          allIntact: chainReport.intact,
+        };
 
   return {
     generatedAt: new Date().toISOString(),
@@ -195,7 +238,13 @@ export async function buildArchiveReport(
     },
     validity: validityOf(events),
     privacy: privacyOf(events),
-    integrity: { declared: withIntegrity.length, verified, failed, chains },
+    integrity: {
+      declared: withIntegrity.length,
+      verified,
+      failed: failed.slice(0, FAILED_SHOWN),
+      failedTotal: failed.length,
+      chains,
+    },
     profiles: coverage.profiles.map((entry) => ({
       name: entry.coverage.profile.name,
       version: entry.coverage.profile.version,
@@ -208,7 +257,6 @@ export async function buildArchiveReport(
       rulesTotal: entry.coverage.rules.total,
       selectedButNeverApplied: entry.coverage.rules.selectedButNeverApplied,
     })),
-    profilesChecked: coverage.checked,
     refusedProfiles: REFUSED_PROFILES.map((profile) => ({
       name: profile.name,
       profileVersion: profile.profileVersion,

@@ -42,8 +42,9 @@ That shapes the design:
   Two outbound actions exist, both requiring a click. Opening a documented external link hands a URL
   to the system browser. **Checking for updates** issues one HTTPS GET to
   `api.github.com/repos/OpenAuditModel/OpenAuditViewer/releases/latest`, from the button in Settings
-  and from nowhere else. It carries a User-Agent and nothing else: no query, no body, no cookies, no
-  credentials, and nothing about the archive on screen or the machine. It is never performed on
+  and from nowhere else. It carries a User-Agent and an `Accept` header naming the GitHub media
+  type, and nothing else: no query, no body, no cookies, no credentials, and nothing about the
+  archive on screen or the machine. It is never performed on
   launch, on a timer, or in the background, and nothing about it is remembered between runs — an
   operator who never presses it runs an application that never opens a socket.
 

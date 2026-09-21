@@ -1434,7 +1434,7 @@ body,
 }
 
 .report-page {
-  background: var(--panel);
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 1.5rem;
@@ -1487,6 +1487,22 @@ body,
 }
 
 @media print {
+  /* The shell sizes itself to the window and scrolls internally, which on
+     paper clips at one page instead of flowing onto the next. Print wants an
+     ordinary document: auto height, visible overflow, block layout. */
+  html,
+  body,
+  #root,
+  .app,
+  .tab-panel,
+  .report,
+  .report-page {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    display: block;
+  }
+
   /* Everything but the report is chrome. */
   .toolbar,
   .tabs,
@@ -1513,8 +1529,16 @@ body,
     color: #333;
   }
 
-  /* A section split across a page break loses the limit that belongs with it. */
-  .report-page section {
+  /* A heading stranded at the foot of a page, or a limit separated from the
+     findings it qualifies, is worse than a section that flows. Keep headings
+     with what follows and rows whole; let long tables break. */
+  .report-page h3 {
+    break-after: avoid;
+  }
+
+  .report-table tr,
+  .report-warning,
+  .report-note {
     break-inside: avoid;
   }
 }

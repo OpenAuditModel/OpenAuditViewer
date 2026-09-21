@@ -493,7 +493,7 @@ describe("archive coverage", () => {
   it("counts what each profile governed, conformed and violated", () => {
     const report = summariseArchiveCoverage([incidentRow, conformingIncident, ungoverned]);
     expect(report.checked).toBe(3);
-    expect(report.skipped).toBe(0);
+    expect(report.unparsed).toBe(0);
 
     const incident = report.profiles.find(
       (entry) => entry.coverage.profile.name === "incident-management",
@@ -515,18 +515,20 @@ describe("archive coverage", () => {
     expect(governsNothing(report)).toBe(true);
   });
 
-  it("does not offer a core-invalid row to any profile", () => {
-    // A profile never evaluates an event the core rejects, so counting such a
-    // row as ungoverned ten times over would say something false about ten
-    // profiles at once.
+  it("offers a core-invalid row to every profile, and counts it as core-invalid", () => {
+    // The CLI's check-coverage is handed every document and counts
+    // `core-invalid` itself, so withholding those rows made this tab's
+    // counters differ from the tool it claims to agree with.
     const broken = { ...minimalEvent("018f1b70-2c18-7f3a-b46d-000000000053") };
     delete broken["actor"];
     const report = summariseArchiveCoverage([incidentRow, loaded("r4", broken, false)]);
 
-    expect(report.checked).toBe(1);
-    expect(report.skipped).toBe(1);
+    expect(report.checked).toBe(2);
+    expect(report.unparsed).toBe(0);
     for (const entry of report.profiles) {
-      expect(entry.coverage.events.coreInvalid).toBe(0);
+      expect(entry.coverage.events.coreInvalid, entry.coverage.profile.name).toBe(1);
+      // And it never counts as governed: no rule is evaluated for it.
+      expect(entry.governed.some((g) => g.row.rowId === "r4")).toBe(false);
     }
   });
 
@@ -704,7 +706,72 @@ describe("archive report", () => {
     expect(report.integrity.declared).toBe(2);
     expect(report.integrity.verified).toBe(2);
     expect(report.integrity.failed).toEqual([]);
-    expect(report.integrity.chains?.intact).toBe(true);
+    expect(report.integrity.chains).toEqual({
+      checked: 1,
+      intact: 1,
+      unassigned: 0,
+      allIntact: true,
+    });
+  });
+
+  it("counts chain members that could not be verified, so the page can say so", async () => {
+    // A chain member the core schema rejects is unassigned rather than
+    // broken, and the chain it belonged to is not established. A page that
+    // printed "1 chain intact" and stopped there would be claiming more than
+    // was checked.
+    const sealed = await seal("018f1b70-2c18-7f3a-b46d-000000000074", 1);
+    const broken = { ...sealed } as Record<string, unknown>;
+    delete broken["actor"];
+
+    const report = await buildArchiveReport(
+      [loaded("c1", sealed), loaded("c2", broken, { valid: false })],
+      summary,
+      undefined,
+    );
+
+    expect(report.integrity.chains?.unassigned).toBe(1);
+    expect(report.integrity.chains?.allIntact).toBe(false);
+  });
+
+  it("carries only the counts of a chain report, never its identifiers or digests", async () => {
+    // A ChainReport holds producer-declared chain identifiers, every member's
+    // declared and calculated digest, and finding detail lines. None of it is
+    // printed, and all of it used to ride along in this structure.
+    const first = await seal("018f1b70-2c18-7f3a-b46d-000000000075", 1);
+    const report = await buildArchiveReport([loaded("c1", first)], summary, undefined);
+    const rendered = JSON.stringify(report);
+
+    expect(rendered).not.toContain("chain-report-1");
+    expect(rendered).not.toContain((first["integrity"] as { hash: string }).hash);
+  });
+
+  it("counts an event the core schema rejects as failed, as verify-integrity does", async () => {
+    // The report is not handed pre-validated rows, so it validates. Printing a
+    // core-invalid event under "Digests verified" would claim something the
+    // CLI does not: `verify-integrity` fails it as schema-invalid.
+    const sealed = await seal("018f1b70-2c18-7f3a-b46d-000000000076", 1);
+    const broken = { ...sealed } as Record<string, unknown>;
+    delete broken["actor"];
+
+    const report = await buildArchiveReport(
+      [loaded("cx", broken, { valid: false })],
+      summary,
+      undefined,
+    );
+    expect(report.integrity.verified).toBe(0);
+    expect(report.integrity.failed).toEqual([{ label: "cx", kinds: ["schema-invalid"] }]);
+  });
+
+  it("counts the same events as the Overview: those declaring a hash", async () => {
+    // Two tabs must not give different answers about one folder. An integrity
+    // object with no hash is nothing to verify, and the Overview offers no
+    // sweep for it.
+    const noHash = minimalEvent("018f1b70-2c18-7f3a-b46d-000000000077", {
+      integrity: { canonicalization: "RFC8785", hashAlgorithm: "SHA-256" },
+    });
+    const report = await buildArchiveReport([loaded("r1", noHash)], summary, undefined);
+    expect(report.integrity.declared).toBe(0);
+    expect(report.integrity.failed).toEqual([]);
   });
 
   it("names the events whose digests failed, by row and finding kind, never by content", async () => {
@@ -843,6 +910,25 @@ describe("where to start", () => {
     ];
     const result = triage(rows);
     expect(result.clean).toBe(true);
+  });
+
+  it("offers at most five of each kind, taking the worst", () => {
+    const rows = Array.from({ length: 9 }, (_, n) =>
+      // n invalid events in file n, so the ranking is unambiguous.
+      Array.from({ length: n + 1 }, (_, k) =>
+        row(`r${n}-${k}`, `f${n}.jsonl`, "app", "x.y.z", false, 0),
+      ),
+    ).flat();
+
+    const files = triage(rows).files;
+    expect(files).toHaveLength(5);
+    expect(files.map((entry) => entry.key)).toEqual([
+      "f8.jsonl",
+      "f7.jsonl",
+      "f6.jsonl",
+      "f5.jsonl",
+      "f4.jsonl",
+    ]);
   });
 
   it("is stable: the same archive produces the same order", () => {

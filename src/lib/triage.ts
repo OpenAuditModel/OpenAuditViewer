@@ -16,6 +16,7 @@
  * application quietly stricter than the tool it claims to agree with is a bug
  * even when its answer looks more useful.
  */
+import { UNKNOWN_APPLICATION } from "./filter";
 import type { LoadedEvent } from "./types";
 
 /** One place problems gather, and what kind they are. */
@@ -115,7 +116,7 @@ export function triage(events: readonly LoadedEvent[]): Triage {
     LIMIT,
   );
   const applications = rank(
-    group(events, (row) => row.applicationName ?? "(unknown application)"),
+    group(events, (row) => row.applicationName ?? UNKNOWN_APPLICATION),
     (entry) => entry.invalid + entry.findings,
     LIMIT,
   );

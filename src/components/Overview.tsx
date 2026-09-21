@@ -16,6 +16,7 @@ import { verifyChains } from "../lib/integrity/chain";
 import type { ChainReport } from "../lib/integrity/types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 import { triage, type Concentration } from "../lib/triage";
+import { UNKNOWN_APPLICATION } from "../lib/filter";
 
 interface Props {
   readonly events: readonly LoadedEvent[];
@@ -151,7 +152,7 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
   const applications = useMemo<AppRow[]>(() => {
     const byName = new Map<string, { count: number; invalid: number; findings: number }>();
     for (const row of events) {
-      const name = row.applicationName ?? "(unknown)";
+      const name = row.applicationName ?? UNKNOWN_APPLICATION;
       const entry = byName.get(name) ?? { count: 0, invalid: 0, findings: 0 };
       entry.count += 1;
       if (!row.valid) entry.invalid += 1;
