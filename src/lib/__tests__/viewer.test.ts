@@ -13,6 +13,7 @@ import { ALL_PROFILES, checkProfile } from "../profiles";
 import { governsNothing, summariseArchiveCoverage } from "../coverage";
 import { compareVersions, compareWithRelease, parseVersion } from "../update";
 import { buildArchiveReport } from "../report";
+import { triage } from "../triage";
 import { buildFlowTopology, buildTraceGroups } from "../trace";
 import type { LoadedEvent, LoadSummary } from "../types";
 
@@ -744,5 +745,110 @@ describe("archive report", () => {
     expect(rendered).not.toContain("distinctive-marker-value");
     expect(rendered).not.toContain("another-marker");
     expect(rendered).not.toContain("018f1b70-2c18-7f3a-b46d-000000000090");
+  });
+});
+
+describe("where to start", () => {
+  function row(
+    id: string,
+    file: string,
+    application: string,
+    eventName: string,
+    valid: boolean,
+    findings: number,
+  ): LoadedEvent {
+    return {
+      rowId: id,
+      sourceFile: file,
+      sourceFormat: "jsonl",
+      event: valid ? minimalEvent(id) : null,
+      valid,
+      errors: [],
+      eventName,
+      applicationName: application,
+      privacyFindings: Array.from({ length: findings }, () => ({
+        ruleId: "OAM-PRIV-001",
+        severity: "high",
+        confidence: "high",
+        category: "credential",
+        path: "/metadata/token",
+        message: "looks like a credential",
+      })) as LoadedEvent["privacyFindings"],
+    };
+  }
+
+  it("says there is nowhere to start when nothing was found", () => {
+    const clean = triage([row("a", "a.jsonl", "app", "x.y.z", true, 0)]);
+    expect(clean.clean).toBe(true);
+    expect(clean.files).toEqual([]);
+    expect(clean.names).toEqual([]);
+    expect(clean.applications).toEqual([]);
+  });
+
+  it("ranks by how much there is to fix, before anything else", () => {
+    const many = Array.from({ length: 8 }, (_, n) =>
+      row(`m${n}`, "many.jsonl", "app", "x.y.z", false, 0),
+    );
+    const few = [0, 1, 2].map((n) => row(`f${n}`, "few.jsonl", "app", "x.y.z", false, 0));
+
+    // Eight invalid events are more work than three, however they are spread.
+    expect(triage([...few, ...many]).files.map((entry) => entry.key)).toEqual([
+      "many.jsonl",
+      "few.jsonl",
+    ]);
+  });
+
+  it("breaks an equal count by concentration, not by size", () => {
+    // Three invalid of three is a file that is wholly wrong, and probably
+    // wrong for one reason. Three of nine hundred is three accidents. The
+    // concentrated one is the better place to start.
+    const small = [0, 1, 2].map((n) => row(`s${n}`, "small.jsonl", "app", "x.y.z", false, 0));
+    const large = [
+      ...[0, 1, 2].map((n) => row(`l${n}`, "large.jsonl", "app", "x.y.z", false, 0)),
+      ...Array.from({ length: 900 }, (_, n) =>
+        row(`v${n}`, "large.jsonl", "app", "x.y.z", true, 0),
+      ),
+    ];
+
+    const ranked = triage([...small, ...large]).files;
+    expect(ranked.map((entry) => entry.key)).toEqual(["small.jsonl", "large.jsonl"]);
+    expect(ranked[0]).toMatchObject({ invalid: 3, events: 3 });
+    expect(ranked[1]).toMatchObject({ invalid: 3, events: 903 });
+  });
+
+  it("groups privacy findings by event name, counting events and findings separately", () => {
+    const rows = [
+      row("a", "a.jsonl", "app", "identity.role.assign", true, 3),
+      row("b", "a.jsonl", "app", "identity.role.assign", true, 1),
+      row("c", "a.jsonl", "app", "document.share.create", true, 2),
+      row("d", "a.jsonl", "app", "document.share.create", true, 0),
+    ];
+    const names = triage(rows).names;
+
+    expect(names[0]).toMatchObject({
+      key: "identity.role.assign",
+      findings: 4,
+      flagged: 2,
+      events: 2,
+    });
+    expect(names[1]).toMatchObject({ key: "document.share.create", findings: 2, flagged: 1 });
+  });
+
+  it("lists nothing it was not given: no rule of its own, no judgement", () => {
+    // Every count is a regrouping of what the engines reported. A row with no
+    // finding and a valid schema appears nowhere, whatever it contains.
+    const rows = [
+      row("a", "a.jsonl", "app", "x.y.z", true, 0),
+      row("b", "b.jsonl", "other", "x.y.z", true, 0),
+    ];
+    const result = triage(rows);
+    expect(result.clean).toBe(true);
+  });
+
+  it("is stable: the same archive produces the same order", () => {
+    const rows = ["a", "b", "c"].map((key) => row(key, `${key}.jsonl`, "app", "x.y.z", false, 0));
+    const first = triage(rows).files.map((entry) => entry.key);
+    const second = triage([...rows].reverse()).files.map((entry) => entry.key);
+    expect(first).toEqual(second);
   });
 });

@@ -9,6 +9,26 @@ as such.
 
 ## Unreleased
 
+### Added — "Where to start", and no audit-quality score
+
+The Overview tab gains a section grouping the findings already on screen by where they came from:
+the files holding invalid events, the event names carrying privacy findings, the applications with
+either. It ranks by problems rather than by volume, so a file with three invalid events out of three
+outranks one with three out of nine hundred, and the order is stable across runs.
+
+It replaces a planned audit-quality view, and the reasoning is worth recording. Everything such a
+view could legitimately score — validity, privacy findings, tamper-evidence, profile conformance —
+is already reported separately, and combining them into one number turns four honest answers into a
+target: an archive with a percentage gets filed, an archive with four numbers gets read. Design
+principle 12 already refuses to treat a fuller event as a better one, and the same reasoning refuses
+a composite.
+
+Anything genuinely new such a view could measure would also have to be a judgement this application
+makes and the CLI does not, which `CONTRIBUTING.md` forbids and the parity suite exists to catch. An
+application quietly stricter than the tool it claims to agree with is a bug even when its answer
+looks more useful. So this section invents no check: every count in it is a regrouping of what the
+published engines already reported.
+
 ### Added — the archive report
 
 One page covering what was loaded, what validated against the canonical schema, what the privacy
