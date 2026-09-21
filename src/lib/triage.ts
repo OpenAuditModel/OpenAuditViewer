@@ -66,9 +66,16 @@ function group(
 }
 
 /**
- * Orders by problems first and volume second, so a file with three invalid
- * events out of three outranks one with three out of nine hundred. Ties break
- * on the key, so two runs over one archive produce the same order.
+ * Orders by how much there is to fix, then by how concentrated it is.
+ *
+ * The primary key is the absolute count, because fifty invalid events are more
+ * work than three however they are spread. When two entries carry the same
+ * count, the smaller total comes first: three invalid events out of three is a
+ * file that is wholly wrong and probably wrong for one reason, while three out
+ * of nine hundred is three separate accidents. The concentrated one is the
+ * better place to start.
+ *
+ * Ties beyond that break on the key, so two runs over one archive agree.
  */
 function rank(
   grouped: ReturnType<typeof group>,
@@ -81,7 +88,7 @@ function rank(
     .sort(
       (left, right) =>
         weight(right) - weight(left) ||
-        right.events - left.events ||
+        left.events - right.events ||
         left.key.localeCompare(right.key, "en"),
     )
     .slice(0, limit);

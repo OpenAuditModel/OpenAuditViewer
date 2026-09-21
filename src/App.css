@@ -1520,7 +1520,11 @@ body,
 }
 
 /* "Where to start": the existing findings, grouped by where they came from.
-   Deliberately plain — no bars, no proportions, nothing that reads as a score. */
+   Deliberately plain — no bars, no proportions, nothing that reads as a score.
+
+   `.triage-row` must stay after `.bar-row`: a clickable row carries both, taking
+   the button reset and hover affordance from the first and its layout from this
+   one, so a row reads the same whether or not it can be clicked. */
 .triage-group {
   margin-top: 0.75rem;
 }

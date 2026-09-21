@@ -785,9 +785,23 @@ describe("where to start", () => {
     expect(clean.applications).toEqual([]);
   });
 
-  it("ranks by problems rather than by volume", () => {
-    // Three invalid of three outranks three invalid of nine hundred: the
-    // question is where the work is, not which file is biggest.
+  it("ranks by how much there is to fix, before anything else", () => {
+    const many = Array.from({ length: 8 }, (_, n) =>
+      row(`m${n}`, "many.jsonl", "app", "x.y.z", false, 0),
+    );
+    const few = [0, 1, 2].map((n) => row(`f${n}`, "few.jsonl", "app", "x.y.z", false, 0));
+
+    // Eight invalid events are more work than three, however they are spread.
+    expect(triage([...few, ...many]).files.map((entry) => entry.key)).toEqual([
+      "many.jsonl",
+      "few.jsonl",
+    ]);
+  });
+
+  it("breaks an equal count by concentration, not by size", () => {
+    // Three invalid of three is a file that is wholly wrong, and probably
+    // wrong for one reason. Three of nine hundred is three accidents. The
+    // concentrated one is the better place to start.
     const small = [0, 1, 2].map((n) => row(`s${n}`, "small.jsonl", "app", "x.y.z", false, 0));
     const large = [
       ...[0, 1, 2].map((n) => row(`l${n}`, "large.jsonl", "app", "x.y.z", false, 0)),
@@ -797,9 +811,9 @@ describe("where to start", () => {
     ];
 
     const ranked = triage([...small, ...large]).files;
-    expect(ranked.map((entry) => entry.key)).toEqual(["large.jsonl", "small.jsonl"]);
-    expect(ranked[0]).toMatchObject({ invalid: 3, events: 903 });
-    expect(ranked[1]).toMatchObject({ invalid: 3, events: 3 });
+    expect(ranked.map((entry) => entry.key)).toEqual(["small.jsonl", "large.jsonl"]);
+    expect(ranked[0]).toMatchObject({ invalid: 3, events: 3 });
+    expect(ranked[1]).toMatchObject({ invalid: 3, events: 903 });
   });
 
   it("groups privacy findings by event name, counting events and findings separately", () => {

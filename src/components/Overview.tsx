@@ -503,7 +503,7 @@ function ConcentrationList({
         ) : (
           <button
             type="button"
-            className="bar-row"
+            className="bar-row triage-row"
             key={entry.key}
             title={`Show only ${entry.key}`}
             onClick={() => onSelect(entry.key)}
