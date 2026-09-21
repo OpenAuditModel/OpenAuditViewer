@@ -3,6 +3,7 @@
  * original smoke-test.mjs; the assertions are deliberately rule-ID-precise
  * so that any drift from the OpenAuditModel CLI's behavior fails loudly.
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { isJsonLines, parseFile, parseJsonLine } from "../parse";
 import { lintEvent } from "../engines";
@@ -812,6 +813,49 @@ describe("archive report", () => {
     expect(rendered).not.toContain("distinctive-marker-value");
     expect(rendered).not.toContain("another-marker");
     expect(rendered).not.toContain("018f1b70-2c18-7f3a-b46d-000000000090");
+  });
+});
+
+describe("the release metadata", () => {
+  // The release workflow refuses a tag that disagrees with these, and the
+  // table below is the one a reader consults to learn whether their version
+  // still receives fixes. It went two releases without moving; nothing
+  // checked it.
+  it("states one current release, and it is this build's minor", () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    const security = readFileSync(new URL("../../../SECURITY.md", import.meta.url), "utf8");
+    const minor = manifest.version.split(".").slice(0, 2).join(".");
+
+    const current = [...security.matchAll(/^\| ([0-9]+\.[0-9]+)\.x\s*\| Current release/gm)].map(
+      (match) => match[1],
+    );
+    expect(current).toEqual([minor]);
+  });
+
+  it("carries the same version in every file the release guard compares", () => {
+    const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+    const manifest = JSON.parse(read("../../../package.json")) as { version: string };
+    const tauri = JSON.parse(read("../../../src-tauri/tauri.conf.json")) as { version: string };
+    const crate = /^version = "([^"]+)"/m.exec(read("../../../src-tauri/Cargo.toml"))?.[1];
+    const locked = /name = "openaudit-viewer"\nversion = "([^"]+)"/.exec(
+      read("../../../src-tauri/Cargo.lock"),
+    )?.[1];
+
+    expect(tauri.version).toBe(manifest.version);
+    expect(crate).toBe(manifest.version);
+    expect(locked).toBe(manifest.version);
+  });
+
+  it("has a dated changelog section for this version", () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+    ) as { version: string };
+    const changelog = readFileSync(new URL("../../../CHANGELOG.md", import.meta.url), "utf8");
+    expect(changelog).toMatch(
+      new RegExp(`^## ${manifest.version.replace(/\./g, "\\.")} - \\d{4}-\\d{2}-\\d{2}$`, "m"),
+    );
   });
 });
 
