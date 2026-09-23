@@ -19,6 +19,11 @@ also contradicted itself: under a paragraph saying the macOS image is signed and
 saying "It is unsigned", which was true of the Windows executable only, and a SHA-256 with no file
 named. Both now say which file they are about.
 
+The macOS note also claimed more than the build does. It said the disk image is notarized; the app
+inside it is — signed, notarized, ticket stapled, and `spctl` accepts it — but the disk image is only
+signed, as it was in 0.5.0. Gatekeeper checks the app when it is opened, so nothing a user sees
+changes; the note now says which of the two is notarized.
+
 ## 0.6.0 - 2026-09-23
 
 Built against `@openauditmodel/cli` 0.6.0.

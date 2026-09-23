@@ -118,8 +118,10 @@ jobs:
           with the file. It needs the WebView2 runtime, which is present on Windows 11 and installed
           alongside Edge on Windows 10.
 
-          **macOS** — a universal disk image, signed with a Developer ID certificate and notarized by
-          Apple, so it opens without a Gatekeeper prompt. Drag it out, run it, delete it.
+          **macOS** — a universal disk image holding the app, which is signed with a Developer ID
+          certificate and notarized by Apple, with the ticket stapled, so it opens without a
+          Gatekeeper prompt. Drag it out, run it, delete it. The disk image itself is signed but not
+          notarized; it is the app Gatekeeper checks when it is opened.
 
           Windows executable SHA-256: \`${WINDOWS_SHA256}\`. The macOS checksum is in
           \`SHA256SUMS-macos.txt\`. A checksum published beside the file it describes proves only
