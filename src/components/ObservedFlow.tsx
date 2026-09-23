@@ -113,6 +113,11 @@ export function ObservedFlow({ events, onOpenEvent, onSelectApplication }: Props
                 {formatDuration(selected.endMs - selected.startMs)}
               </span>
             </div>
+            <p className="detail-note-inline">
+              Built from the loaded events that share this trace. A step the producer never logged,
+              or logged in a file that was not opened, does not appear, and nothing marks where it
+              would have been.
+            </p>
 
             <div className="lanes">
               {selected.applications.map((app) => (

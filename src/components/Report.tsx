@@ -16,9 +16,12 @@
  * repository's `inspect` will define that, and this app should read it rather
  * than invent one three releases early.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildArchiveReport, SEVERITY_ORDER, type ArchiveReport } from "../lib/report";
 import type { LoadedEvent, LoadSummary } from "../lib/types";
+import { useTrustedKey } from "../hooks/useTrustedKey";
+import { formatFingerprint } from "../lib/integrity/trusted-key";
+import { displayPath } from "../lib/paths";
 
 interface Props {
   readonly events: readonly LoadedEvent[];
@@ -42,14 +45,25 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
 
 export function Report({ events, summary, folder }: Props) {
   const [state, setState] = useState<State>({ status: "idle" });
+  const { verifier, key, choose } = useTrustedKey();
   const onScreen = useRef(events);
   onScreen.current = events;
+  const keyInUse = useRef(verifier);
+  keyInUse.current = verifier;
+
+  // A report states which key its signatures were checked with. Once the user
+  // trusts another key, or none, the page on screen describes a choice that is
+  // no longer in effect, so it goes and the next one is asked for.
+  useEffect(() => {
+    setState({ status: "idle" });
+  }, [verifier]);
 
   async function run(): Promise<void> {
     const requested = events;
+    const requestedKey = verifier;
     setState({ status: "running" });
-    const report = await buildArchiveReport(requested, summary, folder);
-    if (onScreen.current === requested) {
+    const report = await buildArchiveReport(requested, summary, folder, requestedKey);
+    if (onScreen.current === requested && keyInUse.current === requestedKey) {
       setState({ status: "done", report });
     }
   }
@@ -60,28 +74,40 @@ export function Report({ events, summary, folder }: Props) {
 
   if (state.status !== "done") {
     return (
-      <div className="panel">
-        <div className="block-head">
-          <span className="label">Archive report</span>
-        </div>
-        <div className="block-body">
-          <p className="detail-note">
-            One page covering what was loaded, what validated, what the privacy linter found, what
-            verified, and which profiles reached this archive — with what none of it establishes.
-            Producing it verifies every declared digest and every chain and measures every profile,
-            so it waits for a click.
-          </p>
-          <div className="sweep-row">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => void run()}
-              disabled={state.status === "running"}
-            >
-              {state.status === "running"
-                ? "Producing…"
-                : `Produce a report for ${events.length} events`}
-            </button>
+      <div className="report">
+        <div className="panel">
+          <div className="block-head">
+            <span className="label">Archive report</span>
+          </div>
+          <div className="block-body">
+            <p className="detail-note">
+              One page covering what was loaded, what validated, what the privacy linter found, what
+              verified, and which profiles reached this archive — with what none of it establishes.
+              Producing it verifies every declared digest and every chain and measures every
+              profile, so it waits for a click.
+            </p>
+            <div className="sweep-row">
+              <span className="detail-note-inline">
+                {key === undefined
+                  ? "Signatures: not checked — no public key chosen."
+                  : `Signatures: checked with the ${key.keyType} key ${formatFingerprint(key.fingerprint).slice(0, 19)}… from ${key.fileName}.`}
+              </span>{" "}
+              <button type="button" className="link-button" onClick={() => void choose()}>
+                {key === undefined ? "Choose a public key…" : "Choose another…"}
+              </button>
+            </div>
+            <div className="sweep-row">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void run()}
+                disabled={state.status === "running"}
+              >
+                {state.status === "running"
+                  ? "Producing…"
+                  : `Produce a report for ${events.length} events`}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -257,6 +283,15 @@ export function Report({ events, summary, folder }: Props) {
               <Row label="Events declaring integrity material" value={integrity.declared} />
               <Row label="Digests verified" value={integrity.verified} />
               <Row label="Digests that failed" value={integrity.failed.length} />
+              <Row label="Events declaring a signature" value={integrity.signatures.declared} />
+              <Row
+                label="Signatures checked with"
+                value={
+                  integrity.signatures.checkedWith === undefined
+                    ? "no key — declared, not checked"
+                    : `${integrity.signatures.checkedWith.keyType} key ${formatFingerprint(integrity.signatures.checkedWith.fingerprint)}`
+                }
+              />
               {integrity.chains !== undefined ? (
                 <>
                   <Row label="Chains checked" value={integrity.chains.checked} />
@@ -282,7 +317,7 @@ export function Report({ events, summary, folder }: Props) {
               <tbody>
                 {integrity.failed.map((entry) => (
                   <tr key={entry.label}>
-                    <td>{entry.label}</td>
+                    <td title={entry.label}>{displayPath(entry.label, report.archive.folder)}</td>
                     <td>{entry.kinds.join(", ")}</td>
                   </tr>
                 ))}
@@ -306,9 +341,10 @@ export function Report({ events, summary, folder }: Props) {
             Verification detects modification of the events that were supplied. It does not prove
             they are all the events that existed: a chain whose most recent entries were deleted is
             internally consistent and is reported intact here. Seeing that requires a checkpoint
-            recorded outside the store, which this application does not read. Signatures were not
-            checked at all — this application holds no key, and a signature verified against a key
-            found beside the events would prove nothing.
+            recorded outside the store, which this application does not read.{" "}
+            {integrity.signatures.checkedWith === undefined
+              ? "Signatures were not checked: no public key was chosen, so every event that declares one is counted on its hash alone."
+              : `Signatures were checked against the key in ${integrity.signatures.checkedWith.fileName}, chosen by whoever produced this report. A signature that verifies proves the event was sealed by the holder of that key — and says as much about the producer as the place that key came from does.`}
           </p>
         </section>
 
@@ -374,7 +410,9 @@ export function Report({ events, summary, folder }: Props) {
               find.
             </li>
             <li>
-              That any signature is genuine. None was verified; this application holds no key.
+              {integrity.signatures.checkedWith === undefined
+                ? "That any signature is genuine. None was verified; no public key was chosen."
+                : "That the key is the producer's. The signatures were checked against it; whose key it is was the choice of whoever produced this report."}
             </li>
             <li>
               That the events are free of personal data. The linter finds shapes, not meaning.

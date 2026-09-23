@@ -18,6 +18,7 @@
 import { summariseArchiveCoverage } from "./coverage";
 import { verifyChains } from "./integrity/chain";
 import { readIntegrity, verifyEventIntegrity } from "./integrity/verify-event";
+import type { SignatureVerifier } from "./integrity/trusted-key";
 import { REFUSED_PROFILES } from "./profiles";
 import type { LoadedEvent, LoadSummary } from "./types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
@@ -59,6 +60,17 @@ export interface IntegritySection {
   /** Failures, capped for the page; `failedTotal` is how many there were. */
   readonly failed: readonly { readonly label: string; readonly kinds: readonly string[] }[];
   readonly failedTotal: number;
+  /**
+   * Events declaring `integrity.signature`, and the key they were checked
+   * against — or none, in which case a declared signature was reported and not
+   * checked, and every one of those events is counted verified on its hash.
+   */
+  readonly signatures: {
+    readonly declared: number;
+    readonly checkedWith:
+      | { readonly keyType: string; readonly fingerprint: string; readonly fileName: string }
+      | undefined;
+  };
   /** Chain counts only. The full report carries chain identifiers and digests. */
   readonly chains:
     | {
@@ -176,7 +188,10 @@ export async function buildArchiveReport(
   events: readonly LoadedEvent[],
   summary: LoadSummary | undefined,
   folder: string | undefined,
+  signatureVerifier?: SignatureVerifier,
 ): Promise<ArchiveReport> {
+  const withKey = signatureVerifier === undefined ? {} : { signatureVerifier };
+
   // The same set the Overview sweeps, defined the same way: a declared hash is
   // what there is to verify. Counting every event with an `integrity` object
   // would make the two tabs give different answers about one folder.
@@ -191,7 +206,7 @@ export async function buildArchiveReport(
     // rows already known to be valid. An event the core schema rejects is not
     // a verified event — `verify-integrity` fails it, and a page that printed
     // it under "Digests verified" would claim something the CLI does not.
-    const result = await verifyEventIntegrity(row.event, row.sourceFile);
+    const result = await verifyEventIntegrity(row.event, row.sourceFile, withKey);
     if (result.verified) {
       verified += 1;
     } else {
@@ -207,7 +222,10 @@ export async function buildArchiveReport(
   const chainReport =
     chainMembers.length === 0
       ? undefined
-      : await verifyChains(chainMembers.map((row) => ({ label: row.rowId, event: row.event })));
+      : await verifyChains(
+          chainMembers.map((row) => ({ label: row.rowId, event: row.event })),
+          withKey,
+        );
 
   // Counts only. A `ChainReport` carries producer-declared chain identifiers,
   // every member's declared and calculated digest, and finding detail lines —
@@ -243,6 +261,20 @@ export async function buildArchiveReport(
       verified,
       failed: failed.slice(0, FAILED_SHOWN),
       failedTotal: failed.length,
+      signatures: {
+        declared: withIntegrity.filter((row) => {
+          const signature = readIntegrity(row.event)?.signature;
+          return signature !== null && typeof signature === "object" && !Array.isArray(signature);
+        }).length,
+        checkedWith:
+          signatureVerifier === undefined
+            ? undefined
+            : {
+                keyType: signatureVerifier.key.keyType,
+                fingerprint: signatureVerifier.key.fingerprint,
+                fileName: signatureVerifier.key.fileName,
+              },
+      },
       chains,
     },
     profiles: coverage.profiles.map((entry) => ({

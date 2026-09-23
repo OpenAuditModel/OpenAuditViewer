@@ -734,6 +734,73 @@ describe("archive report", () => {
     expect(report.integrity.chains?.allIntact).toBe(false);
   });
 
+  it("says which key its signatures were checked with, or that none was", async () => {
+    const sealed = await seal("018f1b70-2c18-7f3a-b46d-000000000077", 1);
+    const signed = structuredClone(sealed);
+    // The signature sits outside the digest input, so the hash still holds.
+    (signed["integrity"] as Record<string, unknown>)["signature"] = {
+      algorithm: "Ed25519",
+      value: "A".repeat(86) + "==",
+    };
+    const rows = [loaded("s1", signed)];
+
+    const unchecked = await buildArchiveReport(rows, summary, undefined);
+    expect(unchecked.integrity.signatures).toEqual({ declared: 1, checkedWith: undefined });
+    expect(unchecked.integrity.verified).toBe(1);
+
+    const refusing = {
+      key: {
+        keyType: "ed25519",
+        fingerprint: "ab".repeat(32),
+        fileName: "producer.pem",
+        usableFor: ["Ed25519"],
+      },
+      verify: async () => ({
+        ok: false as const,
+        kind: "signature-invalid" as const,
+        message: "signature does not match",
+      }),
+    };
+    const checked = await buildArchiveReport(rows, summary, undefined, refusing);
+    expect(checked.integrity.signatures.checkedWith).toEqual({
+      keyType: "ed25519",
+      fingerprint: "ab".repeat(32),
+      fileName: "producer.pem",
+    });
+    expect(checked.integrity.verified).toBe(0);
+    expect(checked.integrity.failed).toEqual([{ label: "s1", kinds: ["signature-invalid"] }]);
+    // The declared value is not something the page prints, so it is not carried.
+    expect(JSON.stringify(checked)).not.toContain("A".repeat(86));
+  });
+
+  it("verifies a chain's signatures with the key too", async () => {
+    // The report's chain path, not only its per-event path, must use the key:
+    // a chain whose signatures fail under it is not intact in the report.
+    const first = await seal("018f1b70-2c18-7f3a-b46d-000000000078", 1);
+    const signed = structuredClone(first);
+    (signed["integrity"] as Record<string, unknown>)["signature"] = {
+      algorithm: "Ed25519",
+      value: "A".repeat(86) + "==",
+    };
+    const refusing = {
+      key: {
+        keyType: "ed25519",
+        fingerprint: "cd".repeat(32),
+        fileName: "producer.pem",
+        usableFor: ["Ed25519"],
+      },
+      verify: async () => ({
+        ok: false as const,
+        kind: "signature-invalid" as const,
+        message: "signature does not match",
+      }),
+    };
+    const withoutKey = await buildArchiveReport([loaded("k1", signed)], summary, undefined);
+    expect(withoutKey.integrity.chains?.allIntact).toBe(true);
+    const withKey = await buildArchiveReport([loaded("k1", signed)], summary, undefined, refusing);
+    expect(withKey.integrity.chains?.allIntact).toBe(false);
+  });
+
   it("carries only the counts of a chain report, never its identifiers or digests", async () => {
     // A ChainReport holds producer-declared chain identifiers, every member's
     // declared and calculated digest, and finding detail lines. None of it is

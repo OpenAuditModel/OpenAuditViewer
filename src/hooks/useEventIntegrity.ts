@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LoadedEvent } from "../lib/types";
 import { readIntegrity, verifyEventIntegrity } from "../lib/integrity/verify-event";
 import { verifyChains } from "../lib/integrity/chain";
+import { useTrustedKey } from "./useTrustedKey";
 import type {
   ChainVerificationResult,
   EventVerificationResult,
@@ -44,10 +45,14 @@ export function useEventIntegrity(
   const [integrity, setIntegrity] = useState<IntegrityState>({ status: "none" });
   const [chain, setChain] = useState<ChainState>({ status: "none" });
   const generation = useRef(0);
+  // Verified again when the key changes: a result reached under the last key,
+  // or under none, must not stay on screen beside the new one.
+  const { verifier } = useTrustedKey();
 
   useEffect(() => {
     generation.current += 1;
     const thisRun = generation.current;
+    const withKey = verifier === undefined ? {} : { signatureVerifier: verifier };
 
     if (row === undefined || !row.valid || row.event === null) {
       setIntegrity({ status: "none" });
@@ -63,7 +68,7 @@ export function useEventIntegrity(
     }
 
     setIntegrity({ status: "verifying" });
-    void verifyEventIntegrity(row.event, row.sourceFile).then((result) => {
+    void verifyEventIntegrity(row.event, row.sourceFile, withKey).then((result) => {
       if (generation.current === thisRun) {
         setIntegrity({ status: "done", result });
       }
@@ -88,7 +93,7 @@ export function useEventIntegrity(
         event: candidate.event as Record<string, unknown>,
       }));
 
-    void verifyChains(members).then((report) => {
+    void verifyChains(members, withKey).then((report) => {
       if (generation.current !== thisRun) {
         return;
       }
@@ -99,7 +104,7 @@ export function useEventIntegrity(
           : { status: "done", chainId, result, unassigned: report.unassigned },
       );
     });
-  }, [row, allEvents]);
+  }, [row, allEvents, verifier]);
 
   return { integrity, chain };
 }

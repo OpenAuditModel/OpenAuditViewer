@@ -43,6 +43,10 @@ export function ChainBlock({ chain }: Props) {
         <code>{chainId}</code> · {plural(result.eventCount, "event")}
         {range}
       </div>
+      <div className="detail-note-inline">
+        Verified over the events loaded from this folder. An event that was never loaded cannot be
+        missed here: a chain whose newest events were deleted verifies as intact.
+      </div>
       <CheckList checks={result.checks} />
       <FindingList findings={result.findings} />
       <FindingList findings={unassigned} />

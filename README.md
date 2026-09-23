@@ -58,17 +58,40 @@ an export to JSON Lines is the producer's decision to make, and their mapping to
 - **Digest verification** — `integrity.hash` recomputed with RFC 8785 canonicalization and
   SHA-256/384/512. Per event, or across the whole folder on request.
 - **Chain verification** — events sharing an `integrity.chainId`, ordered by `sequence`, with every
-  `previousHash` link checked against its predecessor.
+  `previousHash` link checked against its predecessor, and each chain drawable as that line of links
+  with every finding placed on the member it names.
 - **Profile conformance** against the ten published profiles, for whichever ones govern each event.
 
-**Signature verification is deliberately absent — and a declared signature is still reported on.**
-The app has no key registry and no trustworthy way to obtain a key; verifying a signature against a
-key taken from the same folder as the events would prove nothing. So a signature is never checked
-here, but it is never passed over in silence either, and this matches the CLI run without
-`--public-key` exactly: a signature in an algorithm the reference implementation implements is
-shown as declared and not checked, with the verdict resting on the hash alone; a signature in an
-algorithm it does not implement **fails** verification, because a signature that can never be
-checked must not read as verified.
+- **Signature verification against a key you choose** — Ed25519, ECDSA-P256-SHA256 and
+  RSA-PSS-SHA256, the three algorithms `auditmodel verify-integrity --public-key` verifies. Choose
+  the producer's public key in the **Tamper evidence** panel of the Overview; every digest check,
+  chain and report then verifies signatures against it, and the report says which key that was.
+
+**Which key is the only question that matters, and the app cannot answer it.** A signature that
+verifies proves the event was sealed by the holder of that key — so a key taken from the same
+folder as the events proves nothing, since whoever wrote the events could have written the key.
+Take it from wherever the producer publishes it, and compare the SHA-256 fingerprint the panel shows
+with the one they publish. The app keeps no key registry and resolves no `keyId`; a key is trusted
+for the session and forgotten when the app closes.
+
+Without a key, a declared signature is still never passed over in silence, and this matches the CLI
+run without `--public-key` exactly: a signature in an algorithm the reference implementation
+implements is shown as declared and not checked, with the verdict resting on the hash alone; a
+signature in an algorithm it does not implement **fails** verification, with or without a key,
+because a signature that can never be checked must not read as verified.
+
+Verification runs in the app's Rust process, not in the webview. The key file is chosen in a native
+dialog opened from Rust and read there; the webview, which renders untrusted log content, never
+sees the key or names a path. Rust is also where the reference verifier's behaviour can be matched:
+Web Crypto requires an RSA-PSS salt length up front where the CLI accepts whatever the signer chose,
+and its Ed25519 support depends on the webview runtime a machine happens to have. Every answer is
+held to the CLI's by test vectors the canonical package itself produced. Three differ on purpose, and
+each refuses something the CLI accepts: a small-order Ed25519 key (under which the CLI accepts a
+trivial signature for any message), an Ed25519 signature whose R is the identity point, and an
+RSASSA-PSS key that restricts its own parameters. Some files are also refused when chosen, where the
+CLI would load them: a private key, a PKCS#1 `RSA PUBLIC KEY` and a certificate (each with the
+command that converts it), an RSA key with an even modulus or exponent or an exponent below 3, an RSA
+modulus over 16,384 bits, and anything that is not a regular file of at most 64 KiB.
 
 ## What it shows
 
@@ -233,7 +256,8 @@ is not this project's.
 
 ## Known limitations
 
-- No signature verification, as described above.
+- **Signatures prove only as much as the key's source does.** The app verifies against the key you
+  choose and cannot tell you whose key it is; see above.
 - **No checkpoint or inclusion proof verification.** Chain verification proves that the events you
   opened are consistent with each other; it cannot prove they are all the events that existed. A
   chain whose most recent events were deleted is internally consistent and is reported here as

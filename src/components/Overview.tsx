@@ -11,17 +11,26 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LoadedEvent, LoadSummary } from "../lib/types";
-import { readIntegrity, verifyEventIntegrity } from "../lib/integrity/verify-event";
+import { readIntegrity } from "../lib/integrity/verify-event";
 import { verifyChains } from "../lib/integrity/chain";
 import type { ChainReport } from "../lib/integrity/types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 import { triage, type Concentration } from "../lib/triage";
 import { UNKNOWN_APPLICATION } from "../lib/filter";
+import { useTrustedKey } from "../hooks/useTrustedKey";
+import { TrustedKeyPanel } from "./TrustedKeyPanel";
+import { ChainStrip } from "./ChainStrip";
+import { sweepDigests } from "../lib/sweep";
+import { displayPath } from "../lib/paths";
 
 interface Props {
   readonly events: readonly LoadedEvent[];
   readonly summary: LoadSummary | undefined;
   readonly onSelectApplication: (name: string) => void;
+  /** Opens one event in the Events tab, from the chain picture. */
+  readonly onOpenEvent: (rowId: string) => void;
+  /** The opened folder, so paths can be shown relative to it. */
+  readonly folder: string | undefined;
 }
 
 interface AppRow {
@@ -48,8 +57,13 @@ const SEVERITY_CLASS: Readonly<Record<Severity, string>> = {
   info: "sev-info",
 };
 
+/**
+ * A chain identifier short enough for one line, keeping both ends. Producers
+ * name chains by service and then instance, so two chains of one service
+ * differ only at the end — cutting the tail made them read as the same chain.
+ */
 function shortChainId(chainId: string): string {
-  return chainId.length > 12 ? `${chainId.slice(0, 12)}…` : chainId;
+  return chainId.length > 32 ? `${chainId.slice(0, 16)}…${chainId.slice(-12)}` : chainId;
 }
 
 /**
@@ -66,10 +80,12 @@ function shortChainId(chainId: string): string {
  */
 const AUTOMATIC_CHAIN_LIMIT = 5_000;
 
-export function Overview({ events, summary, onSelectApplication }: Props) {
+export function Overview({ events, summary, onSelectApplication, onOpenEvent, folder }: Props) {
+  const [openChain, setOpenChain] = useState<string | undefined>();
   const [chainReport, setChainReport] = useState<ChainReport | undefined>();
   const [chainsVerifying, setChainsVerifying] = useState(false);
   const [sweep, setSweep] = useState<SweepState>({ status: "idle" });
+  const { verifier } = useTrustedKey();
 
   const validRows = useMemo(
     () => events.filter((row) => row.valid && row.event !== null),
@@ -100,7 +116,24 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
     [chainMembers],
   );
 
+  // Which algorithms the loaded events declare signatures in, for the key panel.
+  const declaredSignatures = useMemo(() => {
+    const byAlgorithm = new Map<string, number>();
+    for (const row of withHash) {
+      const signature = readIntegrity(row.event)?.signature;
+      if (signature !== null && typeof signature === "object" && !Array.isArray(signature)) {
+        const algorithm = (signature as Record<string, unknown>)["algorithm"];
+        if (typeof algorithm === "string") {
+          byAlgorithm.set(algorithm, (byAlgorithm.get(algorithm) ?? 0) + 1);
+        }
+      }
+    }
+    return byAlgorithm;
+  }, [withHash]);
+
   useEffect(() => {
+    // A new key, or none, puts every earlier verdict in question: the sweep
+    // is reset and the chains are verified again under the key now trusted.
     setSweep({ status: "idle" });
 
     // Nothing to verify, or too much to verify unasked. Either way the report
@@ -116,7 +149,10 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
 
     let cancelled = false;
     setChainsVerifying(true);
-    void verifyChains(chainInputs).then((report) => {
+    void verifyChains(
+      chainInputs,
+      verifier === undefined ? {} : { signatureVerifier: verifier },
+    ).then((report) => {
       if (!cancelled) {
         setChainReport(report);
         setChainsVerifying(false);
@@ -125,7 +161,7 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [chainInputs]);
+  }, [chainInputs, verifier]);
 
   // Which events are on screen right now. Work started on request runs for as
   // long as it runs, and the user is free to open another folder meanwhile;
@@ -136,13 +172,22 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
   useEffect(() => {
     onScreen.current = events;
   }, [events]);
+  // The same for the key: a sweep started under one key and finished under
+  // another would print verdicts next to a fingerprint they were not reached with.
+  const keyInUse = useRef(verifier);
+  useEffect(() => {
+    keyInUse.current = verifier;
+  }, [verifier]);
 
   /** Verifies chains a load was too large to verify on open. */
   async function runChainVerification(): Promise<void> {
     const requested = events;
     setChainsVerifying(true);
-    const report = await verifyChains(chainInputs);
-    if (onScreen.current !== requested) {
+    const report = await verifyChains(
+      chainInputs,
+      verifier === undefined ? {} : { signatureVerifier: verifier },
+    );
+    if (onScreen.current !== requested || keyInUse.current !== verifier) {
       return;
     }
     setChainReport(report);
@@ -193,30 +238,19 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
 
   async function runDigestSweep(): Promise<void> {
     const requested = events;
+    const requestedKey = verifier;
     setSweep({ status: "running" });
-    let verified = 0;
-    const failed: { label: string; message: string }[] = [];
-
-    for (const row of withHash) {
-      // Abandoned rather than finished when the folder it was started for is
-      // no longer the one on screen.
-      if (onScreen.current !== requested) {
-        return;
-      }
-      const result = await verifyEventIntegrity(row.event, row.sourceFile, {
-        validateSchema: false,
-      });
-      if (result.verified) {
-        verified += 1;
-      } else {
-        failed.push({
-          label: row.rowId,
-          message: result.findings.map((finding) => finding.message).join("; "),
-        });
-      }
+    // Abandoned rather than finished when the folder or the key it was started
+    // for is no longer the one on screen — including when that changes while
+    // the last event is still being verified.
+    const result = await sweepDigests(
+      withHash,
+      requestedKey,
+      () => onScreen.current === requested && keyInUse.current === requestedKey,
+    );
+    if (result !== undefined) {
+      setSweep({ status: "done", ...result });
     }
-
-    setSweep({ status: "done", verified, failed });
   }
 
   if (events.length === 0) {
@@ -345,6 +379,8 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
           </span>
         </div>
         <div className="block-body">
+          <TrustedKeyPanel declared={declaredSignatures} />
+
           {chainMembers.length === 0 ? (
             <div className="detail-note-inline">
               No event declares <code>integrity.chainId</code>, so there are no chains to verify.
@@ -362,19 +398,34 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
                 </div>
               ) : null}
               {chainReport.chains.map((chain) => (
-                <div className="rule-line" key={chain.chainId}>
-                  <span className="rule-id" title={chain.chainId}>
-                    {shortChainId(chain.chainId)}
-                  </span>
-                  <span className="detail-note-inline">
-                    {chain.eventCount} events
-                    {chain.firstSequence !== undefined && chain.lastSequence !== undefined
-                      ? `, seq ${chain.firstSequence}–${chain.lastSequence}`
-                      : ""}
-                  </span>
-                  <span className={chain.intact ? "count-ok" : "count-bad"}>
-                    {chain.intact ? "intact" : `${chain.findings.length} issues`}
-                  </span>
+                <div key={chain.chainId}>
+                  <div className="rule-line">
+                    <span className="rule-id" title={chain.chainId}>
+                      {shortChainId(chain.chainId)}
+                    </span>
+                    <span className="detail-note-inline">
+                      {chain.eventCount} event{chain.eventCount === 1 ? "" : "s"}
+                      {chain.firstSequence !== undefined && chain.lastSequence !== undefined
+                        ? `, seq ${chain.firstSequence}–${chain.lastSequence}`
+                        : ""}
+                    </span>
+                    <span className={chain.intact ? "count-ok" : "count-bad"}>
+                      {chain.intact ? "intact" : `${chain.findings.length} issues`}
+                    </span>
+                    <button
+                      type="button"
+                      className="link-button"
+                      aria-expanded={openChain === chain.chainId}
+                      onClick={() =>
+                        setOpenChain(openChain === chain.chainId ? undefined : chain.chainId)
+                      }
+                    >
+                      {openChain === chain.chainId ? "hide" : "show chain"}
+                    </button>
+                  </div>
+                  {openChain === chain.chainId ? (
+                    <ChainStrip result={chain} onOpenEvent={onOpenEvent} />
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -413,7 +464,8 @@ export function Overview({ events, summary, onSelectApplication }: Props) {
                 </span>
                 {sweep.failed.slice(0, 10).map((failure) => (
                   <div className="check-bad rule-line" key={failure.label}>
-                    <code>{failure.label}</code> {failure.message}
+                    <code title={failure.label}>{displayPath(failure.label, folder)}</code>{" "}
+                    {failure.message}
                   </div>
                 ))}
                 {sweep.failed.length > 10 ? (
