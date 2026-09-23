@@ -88,6 +88,45 @@ jobs:
           sha256sum *.exe | tee SHA256SUMS.txt
           echo "sha256=$(cut -d' ' -f1 SHA256SUMS.txt)" >> "$GITHUB_OUTPUT"
 
+      # The release page says what changed, taken from the changelog's
+      # section for this tag, rather than pointing somewhere else to find out.
+      # A tag with no dated section fails here, not after publishing a page
+      # with nothing on it.
+      - name: Write the release notes from the changelog
+        shell: bash
+        env:
+          WINDOWS_SHA256: ${{ steps.artifact.outputs.sha256 }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v heading="## ${version} - " '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release/notes.md
+          if ! grep -q '[^[:space:]]' release/notes.md; then
+            echo "::error::CHANGELOG.md has no section for ${version}"
+            exit 1
+          fi
+          cat >> release/notes.md <<EOF
+
+          ## Downloads
+
+          **Windows** — \`OpenAuditViewer-${GITHUB_REF_NAME}-x64-portable.exe\`, a single portable
+          executable: download, run, delete when done. Nothing is installed and no administrator
+          rights are needed. It is not code-signed, so SmartScreen warns on first run ("More info" →
+          "Run anyway"); the warning reflects the absence of a signing certificate, not a problem
+          with the file. It needs the WebView2 runtime, which is present on Windows 11 and installed
+          alongside Edge on Windows 10.
+
+          **macOS** — a universal disk image, signed with a Developer ID certificate and notarized by
+          Apple, so it opens without a Gatekeeper prompt. Drag it out, run it, delete it.
+
+          Windows executable SHA-256: \`${WINDOWS_SHA256}\`. The macOS checksum is in
+          \`SHA256SUMS-macos.txt\`. A checksum published beside the file it describes proves only
+          that the download was not corrupted in transit. It is not a signature, and it is worth
+          exactly as much as your trust in this page.
+          EOF
+
       - name: Attach to a draft release
         uses: softprops/action-gh-release@v3
         with:
@@ -97,33 +136,7 @@ jobs:
           files: |
             release/*.exe
             release/SHA256SUMS.txt
-          body: |
-            Experimental build. See CHANGELOG.md for what changed.
-
-            **Windows** — a single portable executable: download, run, delete
-            when done. Nothing is installed and no administrator rights are
-            needed. The binary is unsigned; SmartScreen will warn on first run.
-
-            **macOS** — a universal disk image, signed with a Developer ID
-            certificate and notarized by Apple, so it opens without a Gatekeeper
-            prompt. Drag it out, run it, delete it.
-
-            **It is unsigned.** Windows SmartScreen will warn on first run
-            ("More info" → "Run anyway"). Nothing is blocked; the warning
-            reflects the absence of a code-signing certificate, not a problem
-            with the file.
-
-            SHA-256: `${{ steps.artifact.outputs.sha256 }}`
-
-            A checksum published beside the file it describes proves only that
-            the download was not corrupted in transit. It is not a substitute
-            for a signature, and it is worth exactly as much as your trust in
-            this page.
-
-            Requires the WebView2 runtime, which is present on Windows 11 and
-            installed alongside Edge on Windows 10. Without an installer to
-            bootstrap it, a machine that lacks it needs it installed once from
-            Microsoft.
+          body_path: release/notes.md
 
   macos:
     name: Signed universal build (macOS)
