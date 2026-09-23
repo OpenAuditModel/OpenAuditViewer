@@ -6,15 +6,15 @@
  * `validateEvent` directly instead of taking an injectable validator, and
  * `calculateDigest` is awaited since Web Crypto is asynchronous.
  *
- * Signature verification itself is intentionally not ported: the viewer only
- * ever has the public event data a user opened from disk, and no key to check
- * a signature against. What *is* ported is what the CLI does about a declared
- * signature when it has no key, because the two must agree. An algorithm the
- * reference implementation does not implement fails verification — a signature
- * that can never be checked must not read as verified (specification/integrity.md
- * §6.1) — and an implemented algorithm is reported as declared but not checked,
- * with the verdict resting on the hash alone. Until 0.5.0 this app skipped the
- * first case and reported such an event verified; the parity suite found it.
+ * A declared signature is reported on the CLI's three ways. An algorithm the
+ * reference implementation does not implement fails verification with or
+ * without a key — a signature that can never be checked must not read as
+ * verified (specification/integrity.md §6.1); until 0.5.0 this app reported
+ * such an event verified, and the parity suite found it. An implemented
+ * algorithm with no key chosen is reported as declared but not checked, with
+ * the verdict resting on the hash alone. And with a key the user chose, the
+ * signature is verified: the bytes are computed here, by the same engine that
+ * hashes, and checked in Rust (see trusted-key.ts for why there).
  *
  * This proves that the event has not been altered since its digest was
  * calculated. It proves nothing about whether the event was ever stored, is
@@ -23,12 +23,15 @@
 import { validateEvent as validateAgainstSchema } from "../schema";
 import { CanonicalizationError, isSupportedCanonicalization } from "./canonicalize";
 import {
+  buildDigestInput,
   calculateDigest,
   digestByteLength,
   digestsEqual,
   isHexDigest,
   isSupportedHashAlgorithm,
 } from "./digest";
+import type { SignatureVerifier } from "./trusted-key";
+import { canonicalBytes } from "./canonicalize";
 import {
   SUPPORTED_CANONICALIZATIONS,
   SUPPORTED_HASH_ALGORITHMS,
@@ -41,6 +44,12 @@ import {
 export interface VerifyEventOptions {
   /** Validate against the canonical schema first. Defaults to true. */
   readonly validateSchema?: boolean;
+  /**
+   * The key to verify `integrity.signature` against. Without one, a declared
+   * signature in an implemented algorithm is reported as declared but not
+   * checked, exactly as `verify-integrity` does without `--public-key`.
+   */
+  readonly signatureVerifier?: SignatureVerifier;
 }
 
 /** The integrity object of an event, once it is known to be an object. */
@@ -273,9 +282,43 @@ export async function verifyEventIntegrity(
         calculatedHash: calculated,
       };
     }
-    checks.push({
-      message: `signature declared (${declared.algorithm}), not checked: this viewer holds no public key`,
-    });
+
+    const verifier = options.signatureVerifier;
+    if (verifier === undefined) {
+      checks.push({
+        message: `signature declared (${declared.algorithm}), not checked: no public key was chosen`,
+      });
+    } else {
+      let outcome;
+      try {
+        outcome = await verifier.verify(
+          declared.algorithm,
+          declared.value,
+          canonicalBytes(buildDigestInput(event)),
+        );
+      } catch (cause) {
+        // Not a verdict on the signature — the key changed under a run, or the
+        // host failed — but it must not leave the event looking verified.
+        outcome = {
+          ok: false as const,
+          kind: "signature-invalid" as const,
+          message: `signature could not be checked: ${String(cause)}`,
+        };
+      }
+      if (!outcome.ok) {
+        return {
+          label,
+          verified: false,
+          checks,
+          findings: [{ kind: outcome.kind, label, message: outcome.message }],
+          canonicalization,
+          hashAlgorithm,
+          declaredHash: hash,
+          calculatedHash: calculated,
+        };
+      }
+      checks.push({ message: `signature valid (${declared.algorithm})` });
+    }
   }
 
   return {

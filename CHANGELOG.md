@@ -7,9 +7,121 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 While the project is **experimental**, breaking changes are possible in any release and are labelled
 as such.
 
+## 0.6.0 - 2026-09-23
+
+Built against `@openauditmodel/cli` 0.6.0.
+
+Signatures can now be verified, against a public key the user chooses and the app never lets the
+webview see, with every answer held to the CLI's by vectors the CLI itself produced; and each
+chain can be drawn as the line of links that was verified. An independent review before the tag
+found five things to fix and no path to a false "valid"; a hand check of the built app found four
+more, all visual or about finding things, and all are fixed below.
+
+### Added — signatures are verified against a public key you choose
+
+Choose the producer's public key in the Overview's **Tamper evidence** panel, and every digest
+check, chain verification and archive report verifies `integrity.signature` against it — Ed25519,
+ECDSA-P256-SHA256 and RSA-PSS-SHA256, the three algorithms `verify-integrity --public-key` verifies.
+The panel shows the key's type and its full SHA-256 fingerprint, the one thing a person can compare
+with whoever published the key; the report states which key its signatures were checked with, or
+that none was. A key is trusted for the session and never written to disk.
+
+Verification runs in Rust, not in the webview's Web Crypto, for three reasons. The reference
+verifier recovers an RSA-PSS salt length from the signature, and Web Crypto requires one up front,
+so a webview verifier would call "does not match" a signature the CLI accepts. Web Crypto's Ed25519
+arrived in Chromium only at 137 and in WebKit at Safari 17, so a verdict would have depended on the
+webview runtime a machine happens to have. And the key file is chosen in a native dialog opened from
+Rust and read there, so the webview — which renders untrusted log content — never names a path or
+sees the key's bytes.
+
+Parity is held by fifty-eight vectors that the canonical package's own verifier answered, covering
+all three published signed fixtures, four RSA-PSS salt lengths, a 2049-bit modulus built from
+primes, public exponents from 3 to 2^64 + 13, both ECDSA S values and all three P-256 point forms,
+zero and out-of-range scalars, every base64 leniency Node allows, the PEM layouts OpenSSL reads, and
+each wrong-key message. `cargo test` holds the Rust side to them; the frontend suite re-asks the
+pinned package on every run, so a vector cannot keep an answer the CLI no longer gives. Three answers
+differ on purpose and are recorded with their reasons, and a test refuses any difference that is not
+a refusal of something the CLI accepts: a small-order Ed25519 key, under which the CLI accepts a
+trivial signature for every message; an Ed25519 signature whose R is the identity point, the shape
+of that forgery; and an RSASSA-PSS key that restricts its own parameters, which this app does not
+read. Some files the CLI would load are refused when chosen instead: a private key, a PKCS#1 key and
+a certificate, each with the command that converts it; an RSA key with an even modulus or exponent,
+or an exponent below 3; a modulus over 16,384 bits; and anything but a regular file of at most
+64 KiB.
+
+Writing the vectors found that the CLI accepts unpadded base64, surplus padding and non-zero unused
+bits, because Node's decoder is lenient; a strict decoder here would have failed signatures the CLI
+verifies. It is matched now, and each leniency is a vector.
+
+An independent review before release found no path to a false "valid", and five things worth
+fixing, all fixed. The two RSA-PSS checks that stop one — a signature not below the modulus, and a
+non-zero byte ahead of the encoded message on a modulus one bit past a byte boundary — are ones the
+RSA crate does not make itself, and no vector exercised them; both now have one, and removing
+either check fails the suite. The digest sweep checked for a changed key before each event but not
+after the last, so a key chosen while that verdict was in flight saw the previous key's results
+beside its own fingerprint; the check now runs after the last event too, and a test holds the
+verdict in flight to prove it. Keys OpenSSL loads and this app refused — exponents above 2^33, P-256
+points in hybrid form, PEM on one line or with text around it — are read now, each as a vector. A
+key file is read to 64 KiB at most rather than trusted to report its size, since a FIFO or a link to
+a device reports none. And the chain picture's rule that keeps a duplicated sequence out of a run
+had no test that failed without it; one does now.
+
+### Added — each chain can be drawn as the line of links that was verified
+
+In the Overview, **show chain** beside a chain draws it: its members in the order chain verification
+checked them, the link between each pair, and every finding placed on the member it names. A
+modified event is marked where its digest failed, a broken link where the predecessor's hash stopped
+matching, a duplicated sequence on both members that claim it, absent sequence numbers as a gap, and
+a set that begins mid-chain as an opening stub. Long healthy stretches fold into one run, so a
+chain of thousands draws on a line, and every member with a finding is shown with the member before
+it, because a broken link is a disagreement between two events. Each member opens the event it
+stands for.
+
+Nothing on the picture is decided by the picture. The chain engine now reports the order it walked
+(`order`, `unsequenced`), and the drawing is built from that and from the engine's own findings; a
+test damages sealed chains and checks that every break drawn has a finding behind it and every
+link finding — a broken link or a missing `previousHash` — is drawn.
+
+### Changed — chain and trace results say what they were computed over
+
+The chain picture, the event panel's chain block and a trace's detail now state that they were
+computed over the events loaded from this folder, and what that cannot show: a chain whose newest
+events were deleted verifies as intact, and a step nobody logged leaves no mark in a trace.
+
+### Fixed — what a hand check of the built app found
+
+- The key could not be chosen on macOS. The dialog filtered by extension, and macOS types a `.pem`
+  file as an X.509 certificate, so the key was greyed out. The dialog no longer filters: what the
+  file holds is checked after it is read.
+- The fingerprint check the panel suggested gave the wrong answer on a Mac. `openssl pkey` there is
+  LibreSSL, which cannot read an Ed25519 key, prints nothing, and leaves `shasum` to print the digest
+  of nothing — a mismatch that would have looked like the wrong key. The panel now suggests
+  `grep -v -- ----- key.pem | base64 -d | shasum -a 256`, and a test holds the fingerprint to it.
+- A chain drawn open was cut off: the Overview's panels could shrink to the window, and the
+  panel's own overflow clipped the rest. Panels keep their height and the tab scrolls; Coverage the
+  same.
+- The Report and Coverage tabs had no margin, so their first row sat against the tab bar. The Report
+  now also says, before it is produced, whether signatures will be checked and with which key, and
+  offers the key there — it said which key was used without saying where one is chosen.
+- Two chains of one service read as the same chain, because their identifiers differ only at the
+  end and the end was what got cut. Both ends are kept now, and the drawn chain shows its full
+  identifier. Failed digests in the Overview and the report show paths relative to the opened
+  folder, with the full path on hover.
+
+### Fixed — the Rust tests run in CI
+
+They never did: CI built the desktop app on both platforms and ran no `cargo test`, so the update
+check's four tests had only ever run on a developer's machine. Signature verification makes that a
+correctness question, so the desktop job now runs them on Windows and macOS after the build.
+
+### Changed — pinned to `@openauditmodel/cli` 0.6.0
+
+Nothing this app uses changed in 0.6.0; the parity suite passes unmodified.
+
 ## 0.5.0 - 2026-09-21
 
-Built against `@openauditmodel/cli` 0.5.1.
+Built against `@openauditmodel/cli` 0.5.0. _Corrected in 0.6.0: this line said 0.5.1, but the tag
+pins 0.5.0. Nothing in 0.5.1 reached this app — it fixed the MCP server only._
 
 `SECURITY.md`'s supported-versions table named 0.2.x as current, two releases after it stopped being
 true, because nothing checked it. Three tests now keep the release metadata honest: the table names

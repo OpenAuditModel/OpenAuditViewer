@@ -83,6 +83,13 @@ jobs:
       - name: Build the desktop application
         run: npm run tauri build
 
+      # After the build, because `generate_context!` compiles the built
+      # frontend into the crate. Signature verification runs here in Rust, and
+      # its vectors are the CLI's own answers; they have to hold on both
+      # platforms the app ships for, not only the one it was written on.
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
       # Windows only, deliberately. Both jobs exist to prove the code still
       # compiles; what is published comes from release.yml, signed where it
       # can be, and a macOS bundle built here without the signing material is

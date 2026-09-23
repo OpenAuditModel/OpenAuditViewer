@@ -13,3 +13,4 @@ src/profiles/
 
 # Generated.
 src/schema/validate.generated.js
+src-tauri/tests/signature-vectors.json

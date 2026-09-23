@@ -1,6 +1,6 @@
 [package]
 name = "openaudit-viewer"
-version = "0.5.0"
+version = "0.6.0"
 description = "Local desktop viewer for OpenAuditModel-conformant audit logs"
 authors = ["OpenAuditModel"]
 edition = "2021"
@@ -25,4 +25,16 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+# Signature verification against a key the user chose (src/signature.rs).
+# Verification only: no private key is ever read, so the RSA crate's timing
+# advisory on private-key operations (RUSTSEC-2023-0071) does not reach this.
+ed25519-dalek = "2"
+p256 = { version = "0.13", features = ["ecdsa"] }
+# `hazmat` for the raw public-key operation that reads a PSS signature's salt
+# length before the crate verifies it; see verify_pss_any_salt.
+rsa = { version = "0.9", features = ["hazmat"] }
+sha2 = "0.10"
+spki = { version = "0.7", features = ["alloc"] }
+base64 = "0.22"
+tokio = { version = "1", features = ["sync"] }
 

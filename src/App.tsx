@@ -230,7 +230,13 @@ function App() {
       </nav>
 
       <div className={tab === "overview" ? "tab-panel" : "tab-panel hidden"}>
-        <Overview events={events} summary={summary} onSelectApplication={showApplication} />
+        <Overview
+          events={events}
+          summary={summary}
+          onSelectApplication={showApplication}
+          onOpenEvent={openEventFromTrace}
+          folder={folder}
+        />
       </div>
 
       <div className={tab === "coverage" ? "tab-panel" : "tab-panel hidden"}>

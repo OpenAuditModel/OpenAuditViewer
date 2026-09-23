@@ -45,11 +45,10 @@ export const DIGEST_BYTE_LENGTHS: Readonly<Record<SupportedHashAlgorithm, number
 export const DIGEST_EXCLUDED_POINTERS = ["/integrity/hash", "/integrity/signature"] as const;
 
 /**
- * Signature algorithms the reference implementation can verify. This app
- * verifies none of them — it has no key — but it has to know the list, because
- * a signature in an algorithm the reference implementation cannot check is
- * reported as *not verified* there, with or without a key, and must be here
- * too. Mirrors conformance/src/integrity/types.ts; the parity suite compares
+ * Signature algorithms the reference implementation can verify, and so the ones
+ * this app verifies against a key the user chose. A signature in any other
+ * algorithm is reported as *not verified*, with or without a key, as it is
+ * there. Mirrors conformance/src/integrity/types.ts; the parity suite compares
  * the verdicts this produces against the kit's, and fails the moment the two
  * lists differ — which is how the reference implementation's 0.5.0 widening
  * from one algorithm to three was noticed here.
@@ -73,7 +72,9 @@ export type EventFindingKind =
   | "digest-length-mismatch"
   | "hash-mismatch"
   | "canonicalization-failed"
-  | "unsupported-signature-algorithm";
+  | "unsupported-signature-algorithm"
+  | "malformed-signature"
+  | "signature-invalid";
 
 /** Why a chain failed verification. */
 export type ChainFindingKind =
@@ -130,6 +131,16 @@ export interface ChainVerificationResult {
   readonly checks: readonly PassedCheck[];
   readonly findings: readonly Finding[];
   readonly notes: readonly Note[];
+  /**
+   * The members that carry a sequence, in the order their links were checked:
+   * by sequence, then by label. Each link is between neighbours in this list.
+   * Not part of the reference implementation's result — the viewer draws the
+   * chain from it, and drawing it in any other order would picture a chain
+   * that was not the one verified.
+   */
+  readonly order: readonly { readonly label: string; readonly sequence: number }[];
+  /** Members with no sequence, which the chain could not place. */
+  readonly unsequenced: readonly string[];
 }
 
 /** Outcome of verifying every chain in a supplied set of events. */

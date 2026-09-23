@@ -25,6 +25,7 @@
 import { validateEvent as validateAgainstSchema } from "../schema";
 import { digestsEqual } from "./digest";
 import { readIntegrity, verifyEventIntegrity } from "./verify-event";
+import type { SignatureVerifier } from "./trusted-key";
 import type { ChainReport, ChainVerificationResult, Finding, Note, PassedCheck } from "./types";
 
 /** One event offered for chain verification. */
@@ -64,16 +65,25 @@ function compareMembers(left: ChainMember, right: ChainMember): number {
 async function verifyOneChain(
   chainId: string,
   members: readonly ChainMember[],
+  options: VerifyChainsOptions,
 ): Promise<ChainVerificationResult> {
   const findings: Finding[] = [];
   const notes: Note[] = [];
   const checks: PassedCheck[] = [];
 
-  // Every event's own digest must hold before its links mean anything.
+  // Every event's own digest must hold before its links mean anything. A
+  // signature, when the user chose a key to check it, is verified alongside:
+  // it covers the same canonicalized input as the hash, chain metadata
+  // included, so a signed link is exactly as tamper-evident as a hashed one.
   let digestsValid = true;
   const results = await Promise.all(
     members.map((member) =>
-      verifyEventIntegrity(member.event, member.label, { validateSchema: false }),
+      verifyEventIntegrity(member.event, member.label, {
+        validateSchema: false,
+        ...(options.signatureVerifier === undefined
+          ? {}
+          : { signatureVerifier: options.signatureVerifier }),
+      }),
     ),
   );
   for (const result of results) {
@@ -221,6 +231,8 @@ async function verifyOneChain(
     checks,
     findings,
     notes,
+    order: linkable.map((member) => ({ label: member.label, sequence: member.sequence as number })),
+    unsequenced: withoutSequence.map((member) => member.label),
   };
 }
 
@@ -231,7 +243,15 @@ async function verifyOneChain(
  * verified as several independent chains, which is the intended model — a
  * single global chain is never required.
  */
-export async function verifyChains(inputs: readonly ChainEventInput[]): Promise<ChainReport> {
+export interface VerifyChainsOptions {
+  /** The key to verify each member's `integrity.signature` against. */
+  readonly signatureVerifier?: SignatureVerifier;
+}
+
+export async function verifyChains(
+  inputs: readonly ChainEventInput[],
+  options: VerifyChainsOptions = {},
+): Promise<ChainReport> {
   const unassigned: Finding[] = [];
   const groups = new Map<string, ChainMember[]>();
 
@@ -299,7 +319,7 @@ export async function verifyChains(inputs: readonly ChainEventInput[]): Promise<
     left[0].localeCompare(right[0], "en"),
   );
   const chains = await Promise.all(
-    orderedGroups.map(([chainId, members]) => verifyOneChain(chainId, members)),
+    orderedGroups.map(([chainId, members]) => verifyOneChain(chainId, members, options)),
   );
 
   return {

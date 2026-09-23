@@ -1,7 +1,7 @@
 {
   "name": "openaudit-viewer",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Desktop viewer for OpenAuditModel-conformant audit logs. Validates, privacy-lints, verifies digests and chains, and reconstructs cross-application flows, entirely offline.",
   "license": "Apache-2.0",
   "repository": {
@@ -30,7 +30,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@openauditmodel/cli": "0.5.0",
+    "@openauditmodel/cli": "0.6.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-fs": "^2.5.1",

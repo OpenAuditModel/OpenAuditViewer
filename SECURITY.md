@@ -4,7 +4,8 @@
 
 | Version | Status                                                |
 | ------- | ----------------------------------------------------- |
-| 0.5.x   | Current release. Fixes applied to `main`.             |
+| 0.6.x   | Current release. Fixes applied to `main`.             |
+| 0.5.x   | Superseded. No fixes; upgrade to the current release. |
 | 0.4.x   | Superseded. No fixes; upgrade to the current release. |
 | 0.3.x   | Superseded. No fixes; upgrade to the current release. |
 | 0.2.x   | Superseded. No fixes; upgrade to the current release. |
@@ -60,6 +61,11 @@ That shapes the design:
 - **Filesystem access is scoped to what was picked.** The Tauri capabilities grant no static path.
   Reading is possible only within the folder chosen in the native dialog, writing only to the file
   chosen in the save dialog.
+- **A trusted key never enters the webview.** The public key used to verify signatures is chosen
+  in a native dialog that Rust opens, read by Rust (a regular file only, read to 64 KiB at most
+  whatever its metadata says; PEM `PUBLIC KEY` only; a private key is refused by name) and held in memory for the session. The webview can neither name a path
+  for it nor read its bytes: it receives a summary and a fingerprint, and each verification names
+  that fingerprint, so a verdict cannot come back under a key the user has since replaced.
 - **No runtime code generation.** The schema validator is precompiled at build time, and the
   shipped Content-Security-Policy has no `unsafe-eval`. CI fails if the bundle regains either.
 - **The webview cannot navigate away** from the bundled application.
@@ -75,7 +81,7 @@ That shapes the design:
   crash the application in a way the user cannot recover from.
 - Any case where the app reports an event as verified when the OpenAuditModel CLI would not, or
   reports a chain as intact when a link is broken. A viewer that is wrong about integrity is worse
-  than no viewer.
+  than no viewer. This includes a signature reported valid under a key the CLI would refuse.
 - Any case where a finding, an error message or an export includes a value that should not have
   left the file it came from.
 - Vulnerable dependencies.
@@ -86,9 +92,9 @@ That shapes the design:
   a documented limit of static analysis; see the OpenAuditModel specification, `privacy.md` §6.
 - The observation that verifying a digest does not prove a log is complete. Deleting an entire
   chain leaves nothing to detect; see `integrity.md` §8.
-- Missing signature verification. The app deliberately does not check `integrity.signature`: it has
-  no key registry and no way to obtain a trusted key, and checking a signature against a key taken
-  from the same untrusted source would prove nothing.
+- Whose key a trusted key is. The app verifies signatures against the key the operator chooses and
+  cannot establish who holds it; a key taken from the same untrusted source as the events proves
+  nothing, and the README says so beside the feature.
 - The unsigned release binaries. This is stated in the README, not concealed.
 
 ## Handling audit data safely

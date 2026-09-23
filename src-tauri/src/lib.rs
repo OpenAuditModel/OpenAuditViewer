@@ -3,6 +3,7 @@ use tauri::{
     Runtime,
 };
 
+pub mod signature;
 mod update;
 
 /// Keeps the webview inside the bundled app.
@@ -32,7 +33,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(navigation_guard())
-        .invoke_handler(tauri::generate_handler![update::check_latest_release])
+        .manage(signature::TrustedKeyState::default())
+        .invoke_handler(tauri::generate_handler![
+            update::check_latest_release,
+            signature::choose_public_key,
+            signature::forget_public_key,
+            signature::trusted_public_key,
+            signature::verify_signature
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
