@@ -7,6 +7,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 While the project is **experimental**, breaking changes are possible in any release and are labelled
 as such.
 
+## Unreleased
+
+### Fixed — a release page says what changed
+
+Every release page carried the same fixed text — "See CHANGELOG.md for what changed" — so the page
+people download from said nothing about the release. The notes are now that release's own section of
+this changelog, written by the release workflow, with the download notes after it; a tag whose
+version has no dated section here stops the workflow before a page is published. The fixed text
+also contradicted itself: under a paragraph saying the macOS image is signed and notarized came one
+saying "It is unsigned", which was true of the Windows executable only, and a SHA-256 with no file
+named. Both now say which file they are about.
+
 ## 0.6.0 - 2026-09-23
 
 Built against `@openauditmodel/cli` 0.6.0.
