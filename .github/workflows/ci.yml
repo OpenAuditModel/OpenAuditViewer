@@ -34,7 +34,7 @@ jobs:
         run: npm run generate-validator
 
       - name: Fail if the generated validator is stale
-        run: git diff --exit-code -- src/schema/validate.generated.js
+        run: git diff --exit-code -- src/schema/
 
       - run: npm run typecheck
       - run: npm test
@@ -52,6 +52,51 @@ jobs:
             echo "::error::bundle contains runtime code generation, which the CSP forbids"
             exit 1
           fi
+
+  # The Kafka source against a real broker: PLAINTEXT, and SASL over TLS with
+  # PLAIN and both SCRAM mechanisms, with certificates made for the run. It
+  # runs on Linux and builds no desktop application: it needs Docker for the
+  # broker, which the Windows and macOS runners do not offer, and it tests
+  # what a read does on the wire, which no platform changes.
+  kafka:
+    name: Kafka source against a broker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # librdkafka 2.12's CMake build includes curl.h even with curl turned
+      # off: one #ifdef tests a macro its generated config header always
+      # defines, if only to 0. The header must exist; nothing of curl is
+      # compiled in or linked. Windows and macOS are not affected — Windows
+      # takes its definitions from CMake, and the macOS SDK carries the header.
+      - name: Install the curl header librdkafka includes
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev
+
+      - name: Start the broker
+        # bash, not the default `bash -e`: with pipefail, a broker that fails
+        # to start fails this step rather than the tests two steps later.
+        shell: bash
+        run: src-tauri/kafka-source/tests/broker/start.sh | sed 's/^export //' >> "$GITHUB_ENV"
+
+      - name: Test the Kafka source
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p oav-kafka --locked
+
+      # Every broker test returns early when its environment is missing, so
+      # that a laptop without Docker stays green. Here that would be a pass
+      # that tested nothing; the environment is checked instead of trusted.
+      - name: Confirm the broker tests ran
+        run: |
+          test -n "$OAV_KAFKA_PLAINTEXT" && test -n "$OAV_KAFKA_SASL_TLS" && test -f "$OAV_KAFKA_CA"
+
+      - name: Stop the broker
+        if: always()
+        run: src-tauri/kafka-source/tests/broker/stop.sh
 
   desktop:
     name: Desktop build (${{ matrix.os }})
@@ -73,6 +118,10 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The release is one universal macOS image, so the Intel slice has
+          # to build on this arm64 runner too; see the step below.
+          targets: ${{ matrix.os == 'macos-latest' && 'x86_64-apple-darwin' || '' }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -82,6 +131,16 @@ jobs:
 
       - name: Build the desktop application
         run: npm run tauri build
+
+      # librdkafka and OpenSSL are C, built from source for each target. The
+      # release builds an x86_64 slice on an arm64 machine, and a native library
+      # built for the wrong architecture only fails when the slices are linked
+      # — at release time, unless it is built here first.
+      - name: Build the Kafka source for Intel Macs
+        if: matrix.os == 'macos-latest'
+        # Linked, not only compiled: a library built for the wrong
+        # architecture fails at the link, and a bare build links nothing.
+        run: cargo test --no-run --manifest-path src-tauri/Cargo.toml -p oav-kafka --target x86_64-apple-darwin --locked
 
       # After the build, because `generate_context!` compiles the built
       # frontend into the crate. Signature verification runs here in Rust, and

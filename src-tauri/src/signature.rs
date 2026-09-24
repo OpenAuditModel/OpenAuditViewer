@@ -26,8 +26,9 @@
 //! vectors the canonical package itself produced
 //! (`tools/generate-signature-vectors.mjs`). Where this module answers
 //! differently the vector names the reason, and the test refuses any
-//! difference that is not a refusal of something the CLI accepts: a small-order
-//! Ed25519 key or R, and an RSASSA-PSS key that restricts its own parameters.
+//! difference that is not a refusal of something the CLI accepts: an
+//! RSASSA-PSS key that restricts its own parameters. A small-order Ed25519 key
+//! or R was one until canonical 1.0.0 refused them too; both now agree.
 //! Separately, some files the CLI would load are refused when the key is
 //! chosen: see `parse_public_key`, `rsa_public_key` and `read_key_file`.
 //!
@@ -94,9 +95,10 @@ pub struct KeySummary {
 }
 
 enum Material {
-    /// `None` when the 32 bytes are not a valid curve point. OpenSSL loads
-    /// such a key and fails every signature against it; so does this.
-    Ed25519(Option<ed25519_dalek::VerifyingKey>),
+    /// The 32 bytes as the file holds them, and the key they decode to —
+    /// `None` when they are not a valid curve point. OpenSSL loads such a key
+    /// and fails every signature against it; so does this.
+    Ed25519([u8; 32], Option<ed25519_dalek::VerifyingKey>),
     P256(p256::ecdsa::VerifyingKey),
     Rsa {
         key: rsa::RsaPublicKey,
@@ -136,6 +138,52 @@ impl Outcome {
         Outcome::fail("signature-invalid", "signature does not match")
     }
 }
+
+/// The encodings of the eight points of order 1, 2, 4 and 8 on edwards25519,
+/// sign bit cleared — the list the CLI refuses a key or an R against, and
+/// libsodium before it. Two are the non-canonical y = p and y = p + 1.
+const SMALL_ORDER_POINTS: [[u8; 32]; 7] = [
+    hex32("0000000000000000000000000000000000000000000000000000000000000000"),
+    hex32("0100000000000000000000000000000000000000000000000000000000000000"),
+    hex32("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"),
+    hex32("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a"),
+    hex32("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
+    hex32("edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
+    hex32("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"),
+];
+
+const fn hex32(text: &str) -> [u8; 32] {
+    const fn nibble(byte: u8) -> u8 {
+        match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'a'..=b'f' => byte - b'a' + 10,
+            _ => panic!("not lowercase hex"),
+        }
+    }
+    let bytes = text.as_bytes();
+    let mut out = [0u8; 32];
+    let mut index = 0;
+    while index < 32 {
+        out[index] = nibble(bytes[2 * index]) << 4 | nibble(bytes[2 * index + 1]);
+        index += 1;
+    }
+    out
+}
+
+/// True when a 32-byte encoded point is one of the small-order points, either sign.
+fn is_small_order_point(encoded: &[u8]) -> bool {
+    let Ok(mut cleared) = <[u8; 32]>::try_from(encoded) else {
+        return false;
+    };
+    cleared[31] &= 0x7f;
+    SMALL_ORDER_POINTS.contains(&cleared)
+}
+
+/// The CLI's words for a small-order key, so that the two agree to the letter.
+const SMALL_ORDER_KEY_MESSAGE: &str = "this Ed25519 public key is a small-order point: nobody holds a private key for it, and a signature that verifies under it can be made for any message, so it is not used";
+
+/// The CLI's words for a small-order R.
+const SMALL_ORDER_R_MESSAGE: &str = "the signature's R is a small-order point, a nonce no honest signer produces, so the signature is not accepted";
 
 /// The algorithms this verifier implements, in the CLI's names and order.
 pub const SUPPORTED_ALGORITHMS: [&str; 3] = ["Ed25519", "ECDSA-P256-SHA256", "RSA-PSS-SHA256"];
@@ -209,7 +257,7 @@ pub fn parse_public_key(pem: &str, file_name: &str) -> Result<TrustedKey, String
         let point = <[u8; 32]>::try_from(key_bytes)
             .map_err(|_| "the Ed25519 key is not 32 bytes long".to_owned())?;
         let key = ed25519_dalek::VerifyingKey::from_bytes(&point).ok();
-        ("ed25519", None, None, Material::Ed25519(key))
+        ("ed25519", None, None, Material::Ed25519(point, key))
     } else if oid == OID_EC_PUBLIC_KEY {
         let curve_oid = spki
             .algorithm
@@ -378,6 +426,12 @@ pub fn verify(key: &TrustedKey, algorithm: &str, value: &str, message: &[u8]) ->
             ),
         );
     }
+    // Where the CLI refuses it: after the key's type, before anything else.
+    if let Material::Ed25519(point, _) = &key.material {
+        if is_small_order_point(point) {
+            return Outcome::fail("signature-invalid", SMALL_ORDER_KEY_MESSAGE);
+        }
+    }
     if algorithm == "ECDSA-P256-SHA256" && summary.curve.as_deref() != Some("prime256v1") {
         return Outcome::fail(
             "signature-invalid",
@@ -420,18 +474,21 @@ pub fn verify(key: &TrustedKey, algorithm: &str, value: &str, message: &[u8]) ->
         );
     }
 
+    if algorithm == "Ed25519" && is_small_order_point(&signature[..32]) {
+        return Outcome::fail("signature-invalid", SMALL_ORDER_R_MESSAGE);
+    }
+
     let valid = match (&key.material, algorithm) {
-        (Material::Ed25519(Some(verifying_key)), "Ed25519") => {
+        (Material::Ed25519(_, Some(verifying_key)), "Ed25519") => {
             let bytes = <[u8; 64]>::try_from(signature.as_slice()).expect("length checked above");
-            // Strict: a small-order key or R is refused. OpenSSL accepts the
-            // identity point as a key, and under it the all-but-empty
-            // signature verifies for every message; the vectors record the
-            // CLI doing so. A key that verifies everything proves nothing.
+            // Strict, as the CLI is from 1.0.0: a small-order key or R was
+            // refused above, in the CLI's words, and `verify_strict` refuses
+            // anything of the kind the list might not name.
             verifying_key
                 .verify_strict(message, &ed25519_dalek::Signature::from_bytes(&bytes))
                 .is_ok()
         }
-        (Material::Ed25519(None), "Ed25519") => false,
+        (Material::Ed25519(_, None), "Ed25519") => false,
         (Material::P256(verifying_key), "ECDSA-P256-SHA256") => {
             // A zero or out-of-range r or s does not parse; OpenSSL reports
             // the same inputs as a signature that does not match.

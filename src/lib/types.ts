@@ -15,7 +15,9 @@ export type { ValidationIssue };
 
 export type { PrivacyFinding, Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 
-export type SourceFormat = "json" | "jsonl";
+/** Where a row was read from: a JSON document, a JSON Lines file, or a record
+ * of a Kafka topic. */
+export type SourceFormat = "json" | "jsonl" | "kafka";
 
 /** One row in the table: a parsed event plus where it came from and whether it validates. */
 export interface LoadedEvent {
@@ -25,6 +27,12 @@ export interface LoadedEvent {
   /** The parsed event, or null when the text could not be read as one. */
   readonly event: Record<string, unknown> | null;
   readonly valid: boolean;
+  /**
+   * The event declares a specification version this app does not implement,
+   * so no schema was applied to it (ADR 0017 §3). Never valid — nothing was
+   * checked — and not shown as invalid either, because nothing was found wrong.
+   */
+  readonly notEvaluated: boolean;
   readonly errors: readonly ValidationIssue[];
   readonly time?: string;
   readonly applicationName?: string;
@@ -69,4 +77,66 @@ export interface LoadSummary {
   /** True when loading stopped at the event ceiling: the folder holds more. */
   readonly truncated: boolean;
   readonly eventLimit: number;
+  /** Present when the events are a window read from a Kafka topic, not a
+   * folder; the file counts above are then all zero. */
+  readonly window?: StreamWindowSummary;
+}
+
+/** Why reading a window ended, as the Rust side names it. */
+export type WindowStop =
+  | "end-of-window"
+  | "event-limit"
+  | "byte-limit"
+  | "cancelled"
+  | "timed-out"
+  | "stalled"
+  /** Not a stop: the window is read and the app is still listening. */
+  | "listening"
+  /** Listening ended with an error after the window was read. */
+  | "failed";
+
+/** What one partition contributed to a window. */
+export interface WindowPartition {
+  readonly partition: number;
+  readonly startOffset: number;
+  /** The partition's end when reading started: nothing at or after it was read. */
+  readonly endOffset: number;
+  /** The oldest offset the broker held when reading started. */
+  readonly lowOffset: number;
+  readonly records: number;
+  readonly complete: boolean;
+}
+
+/** A window read from a Kafka topic: where from, how, and why it ended. */
+export interface StreamWindowSummary {
+  readonly sourceName: string;
+  readonly bootstrapServers: readonly string[];
+  readonly topic: string;
+  readonly protection: string;
+  /** What was asked for, in words: the range, and whether it was followed. */
+  readonly start: string;
+  /** The read-time filter, in words, when there was one. */
+  readonly filter?: string;
+  readonly partitions: readonly WindowPartition[];
+  /** Records read from the broker, kept or not. */
+  readonly scanned: number;
+  /** Records kept: the ones that matched, when filtering. */
+  readonly records: number;
+  /** Of those, the ones that arrived after the window, while listening. */
+  readonly followed: number;
+  /** The whole window was read and listening went on after it: `stop` then
+   * says how listening ended, not that the window was cut short. */
+  readonly listened: boolean;
+  /**
+   * The window can have holes a chain runs across: it did not read every
+   * partition from its first offset to its end, unfiltered. Only then is a
+   * link across a gap reported as not checked rather than broken.
+   */
+  readonly edges: boolean;
+  /** Why listening failed, when it did. */
+  readonly error?: string;
+  readonly stop: WindowStop;
+  readonly maxEvents: number;
+  /** When reading finished, as an ISO time. */
+  readonly readAt: string;
 }

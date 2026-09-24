@@ -1,6 +1,6 @@
 [package]
 name = "openaudit-viewer"
-version = "0.6.0"
+version = "1.0.0"
 description = "Local desktop viewer for OpenAuditModel-conformant audit logs"
 authors = ["OpenAuditModel"]
 edition = "2021"
@@ -13,6 +13,9 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "tauri_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[workspace]
+members = ["kafka-source"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -37,4 +40,10 @@ sha2 = "0.10"
 spki = { version = "0.7", features = ["alloc"] }
 base64 = "0.22"
 tokio = { version = "1", features = ["sync"] }
+# Reading a window of a Kafka topic (src/kafka.rs); the crate holds everything
+# that talks to a broker, and is tested against a real one.
+oav-kafka = { path = "kafka-source" }
+# A source's password lives in the system keychain — macOS Keychain, Windows
+# Credential Manager — and never in a file or in the webview.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
 

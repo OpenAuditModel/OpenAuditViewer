@@ -1,6 +1,6 @@
 import type { ErrorObject } from "ajv";
 
-/** Precompiled validator for audit-event.schema.json. See tools/generate-validator.mjs. */
+/** Precompiled validator for audit-event schema 1.0. See tools/generate-validator.mjs. */
 declare const validate: {
   (data: unknown): boolean;
   errors?: ErrorObject[] | null;

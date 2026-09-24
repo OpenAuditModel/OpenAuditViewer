@@ -20,7 +20,9 @@ import { verifyChains } from "./integrity/chain";
 import { readIntegrity, verifyEventIntegrity } from "./integrity/verify-event";
 import type { SignatureVerifier } from "./integrity/trusted-key";
 import { REFUSED_PROFILES } from "./profiles";
-import type { LoadedEvent, LoadSummary } from "./types";
+import type { LoadedEvent, LoadSummary, StreamWindowSummary } from "./types";
+import { chainVerdict } from "./chain-view";
+import { sourceGroup } from "./stream-window";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 
 /** What the folder held, and what of it was read. */
@@ -35,11 +37,15 @@ export interface ArchiveSection {
   /** True when loading stopped at the ceiling: the folder holds more than this. */
   readonly truncated: boolean;
   readonly eventLimit: number;
+  /** Present when the events are a window read from a Kafka topic. */
+  readonly window: StreamWindowSummary | undefined;
 }
 
 export interface ValiditySection {
   readonly valid: number;
   readonly invalid: number;
+  /** Events declaring a version this app does not implement: neither valid nor invalid. */
+  readonly notEvaluated: number;
   /** Files holding at least one event the schema rejected, most first, capped. */
   readonly worstFiles: readonly { readonly file: string; readonly invalid: number }[];
   /** How many files hold invalid events in total, so a truncated table says so. */
@@ -76,6 +82,8 @@ export interface IntegritySection {
     | {
         readonly checked: number;
         readonly intact: number;
+        /** Chains whose only findings are links to events outside the window read. */
+        readonly outsideWindow: number;
         /** Events carrying a chainId that could not be assigned to a chain at all. */
         readonly unassigned: number;
         /** False when any chain is broken or any member could not be verified. */
@@ -162,15 +170,20 @@ function privacyOf(events: readonly LoadedEvent[]): PrivacySection {
 function validityOf(events: readonly LoadedEvent[]): ValiditySection {
   const perFile = new Map<string, number>();
   let invalid = 0;
+  let notEvaluated = 0;
   for (const row of events) {
-    if (!row.valid) {
+    if (row.notEvaluated) {
+      notEvaluated += 1;
+    } else if (!row.valid) {
       invalid += 1;
-      perFile.set(row.sourceFile, (perFile.get(row.sourceFile) ?? 0) + 1);
+      const where = sourceGroup(row);
+      perFile.set(where, (perFile.get(where) ?? 0) + 1);
     }
   }
   return {
-    valid: events.length - invalid,
+    valid: events.length - invalid - notEvaluated,
     invalid,
+    notEvaluated,
     worstFiles: [...perFile.entries()]
       .map(([file, count]) => ({ file, invalid: count }))
       .sort((left, right) => right.invalid - left.invalid || left.file.localeCompare(right.file))
@@ -224,7 +237,7 @@ export async function buildArchiveReport(
       ? undefined
       : await verifyChains(
           chainMembers.map((row) => ({ label: row.rowId, event: row.event })),
-          withKey,
+          { ...withKey, windowed: summary?.window?.edges === true },
         );
 
   // Counts only. A `ChainReport` carries producer-declared chain identifiers,
@@ -237,6 +250,8 @@ export async function buildArchiveReport(
       : {
           checked: chainReport.chains.length,
           intact: chainReport.chains.filter((chain) => chain.intact).length,
+          outsideWindow: chainReport.chains.filter((chain) => chainVerdict(chain) === "unchecked")
+            .length,
           unassigned: chainReport.unassigned.length,
           allIntact: chainReport.intact,
         };
@@ -253,6 +268,7 @@ export async function buildArchiveReport(
       unreadableDirectories: summary?.directoriesFailed.length ?? 0,
       truncated: summary?.truncated ?? false,
       eventLimit: summary?.eventLimit ?? 0,
+      window: summary?.window,
     },
     validity: validityOf(events),
     privacy: privacyOf(events),

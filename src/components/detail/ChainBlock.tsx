@@ -8,6 +8,7 @@
  * thing this panel could say.
  */
 import type { ChainState } from "../../hooks/useEventIntegrity";
+import { chainVerdict } from "../../lib/chain-view";
 import { DetailBlock, plural } from "./DetailBlock";
 import { CheckList, FindingList, NoteList } from "./VerificationLists";
 
@@ -25,7 +26,7 @@ export function ChainBlock({ chain }: Props) {
   }
 
   const { result, unassigned, chainId } = chain;
-  const intact = result.intact && unassigned.length === 0;
+  const verdict = chainVerdict(result, unassigned.length);
   const issues = result.findings.length + unassigned.length;
   const range =
     result.firstSequence !== undefined && result.lastSequence !== undefined
@@ -36,16 +37,22 @@ export function ChainBlock({ chain }: Props) {
     <DetailBlock
       label="Chain"
       swatch="chain"
-      tone={intact ? "ok" : "bad"}
-      status={intact ? `${result.eventCount} events, intact` : plural(issues, "issue")}
+      tone={verdict === "intact" ? "ok" : verdict === "unchecked" ? "pending" : "bad"}
+      status={
+        verdict === "intact"
+          ? `${result.eventCount} events, intact`
+          : verdict === "unchecked"
+            ? `${plural(issues, "link")} outside the window`
+            : plural(issues, "issue")
+      }
     >
       <div className="detail-note-inline">
         <code>{chainId}</code> · {plural(result.eventCount, "event")}
         {range}
       </div>
       <div className="detail-note-inline">
-        Verified over the events loaded from this folder. An event that was never loaded cannot be
-        missed here: a chain whose newest events were deleted verifies as intact.
+        Verified over the events loaded. An event that was never loaded cannot be missed here: a
+        chain whose newest events were deleted verifies as intact.
       </div>
       <CheckList checks={result.checks} />
       <FindingList findings={result.findings} />

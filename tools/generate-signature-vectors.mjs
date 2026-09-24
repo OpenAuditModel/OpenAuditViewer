@@ -193,7 +193,8 @@ add("ed25519 one byte short", {
 }
 {
   // The identity point as the key, with R = identity and S = 0. Cofactorless
-  // verification without a small-order check accepts this for any message.
+  // verification without a small-order check accepts this for any message;
+  // the CLI refuses the key from 1.0.0, and the viewer in the same words.
   const identity = Buffer.alloc(32);
   identity[0] = 1;
   const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), identity]);
@@ -202,9 +203,6 @@ add("ed25519 one byte short", {
     algorithm: "Ed25519",
     value: Buffer.concat([identity, Buffer.alloc(32)]).toString("base64"),
     publicKeyPem: pem,
-    divergence:
-      "the CLI accepts this signature, and it would accept it for any message: under the identity point as a key, R = identity and S = 0 satisfy the verification equation for every input. The viewer verifies strictly and refuses a small-order key or R, because a key that verifies everything proves nothing",
-    viewer: { ok: false, kind: "signature-invalid", message: "signature does not match" },
   });
 }
 add("ed25519 key given for ECDSA-P256-SHA256", {
@@ -653,9 +651,6 @@ function pemOf(der, width = 64) {
     algorithm: "Ed25519",
     value: Buffer.concat([identity, fromBigInt(s, 32, true)]).toString("base64"),
     publicKeyPem: edPem,
-    divergence:
-      "R is the identity point, a nonce of zero: the CLI accepts it and so does RFC 8032. The viewer verifies strictly and refuses a small-order R, because a zero nonce is the shape of the trivial forgery recorded above, and no honest signer produces one",
-    viewer: { ok: false, kind: "signature-invalid", message: "signature does not match" },
   });
 }
 {

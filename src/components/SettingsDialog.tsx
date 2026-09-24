@@ -1,10 +1,11 @@
 /**
  * Settings, About and Updates in one small dialog.
  *
- * The update check is the only thing in this application that opens a socket,
- * and it does so only from the button below. There is no check on launch, no
- * timer and nothing remembered between runs, so an operator who never presses
- * it runs an app that never reaches the network. The request is made by Rust
+ * The update check opens a socket only from the button below — the one other
+ * thing that does is reading from a Kafka source the operator saved. There is
+ * no check on launch, no timer and nothing remembered between runs, so an
+ * operator who never presses it, and never reads from Kafka, runs an app that
+ * never reaches the network. The request is made by Rust
  * against a constant URL and carries a User-Agent and nothing else; see
  * `src-tauri/src/update.rs` for why it exists at all and what it deliberately
  * does not send.
@@ -169,8 +170,9 @@ export function SettingsDialog({ open, onClose }: Props) {
             </tbody>
           </table>
           <p className="dialog-note">
-            Experimental build. Validation, privacy linting, digest/chain verification and profile
-            checks run entirely offline, ported from the OpenAuditModel conformance tooling.
+            Reads OpenAuditModel 1.0 events, and events written under 0.1. Validation, privacy
+            linting, digest, chain and signature verification and profile checks run entirely
+            offline, held to the answers of the OpenAuditModel conformance tooling.
           </p>
           <div className="about-links">
             {link("https://openauditmodel.org", "openauditmodel.org")}
@@ -181,10 +183,10 @@ export function SettingsDialog({ open, onClose }: Props) {
         <div className="dialog-section">
           <h4>Updates</h4>
           <p className="dialog-note">
-            This is the only thing in the application that reaches the network, and only when you
-            press the button. It asks GitHub for the latest published release and compares it with
-            this build. Nothing about the archive on screen is sent, nothing is checked
-            automatically, and nothing is remembered.
+            This reaches the network only when you press the button — the one other thing that does
+            is reading from a Kafka source you saved. It asks GitHub for the latest published
+            release and compares it with this build. Nothing about the archive on screen is sent,
+            nothing is checked automatically, and nothing is remembered.
           </p>
           <div className="sweep-row">
             <button

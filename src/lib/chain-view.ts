@@ -14,8 +14,9 @@
  */
 import type { ChainVerificationResult, Finding } from "./integrity/types";
 
-/** How a member's own link to the member before it stands. */
-export type LinkState = "start" | "valid" | "broken" | "missing";
+/** How a member's own link to the member before it stands. `unchecked`: the
+ * member before it is outside the window that was read. */
+export type LinkState = "start" | "valid" | "broken" | "missing" | "unchecked";
 
 export interface ChainViewEvent {
   readonly type: "event";
@@ -58,7 +59,29 @@ export interface ChainView {
 /** Shorter than this, a healthy stretch is drawn member by member. */
 const SMALLEST_RUN = 3;
 
-const LINK_KINDS = new Set(["broken-link", "previous-hash-missing"]);
+const LINK_KINDS = new Set(["broken-link", "previous-hash-missing", "link-outside-window"]);
+
+/**
+ * One word for a chain: intact, broken, or — for a window read from a stream,
+ * when the only findings are links to events outside it — not fully checked.
+ * Unassigned members (schema-invalid events declaring the chain) make a chain
+ * broken, as they do everywhere: nothing about them was verified.
+ */
+export type ChainVerdict = "intact" | "unchecked" | "broken";
+
+export function chainVerdict(
+  result: Pick<ChainVerificationResult, "intact" | "findings">,
+  unassigned = 0,
+): ChainVerdict {
+  if (result.intact && unassigned === 0) {
+    return "intact";
+  }
+  const windowOnly =
+    unassigned === 0 &&
+    result.findings.length > 0 &&
+    result.findings.every((finding) => finding.kind === "link-outside-window");
+  return windowOnly ? "unchecked" : "broken";
+}
 
 export function buildChainView(result: ChainVerificationResult): ChainView {
   const order = result.order;
@@ -94,7 +117,9 @@ export function buildChainView(result: ChainVerificationResult): ChainView {
           ? "valid"
           : linkFinding.kind === "broken-link"
             ? "broken"
-            : "missing";
+            : linkFinding.kind === "link-outside-window"
+              ? "unchecked"
+              : "missing";
     return {
       type: "event",
       label: position.label,

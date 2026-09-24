@@ -83,6 +83,7 @@ export type ChainFindingKind =
   | "duplicate-sequence"
   | "previous-hash-missing"
   | "broken-link"
+  | "link-outside-window"
   | "algorithm-mismatch";
 
 export type FindingKind = EventFindingKind | ChainFindingKind;

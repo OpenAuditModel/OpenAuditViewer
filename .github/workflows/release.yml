@@ -68,7 +68,7 @@ jobs:
       - name: Fail if the generated validator is stale
         run: |
           npm run generate-validator
-          git diff --exit-code -- src/schema/validate.generated.js
+          git diff --exit-code -- src/schema/
 
       - run: npm test
 
@@ -133,7 +133,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
-          prerelease: true
+          prerelease: false
           name: ${{ github.ref_name }}
           files: |
             release/*.exe
@@ -170,7 +170,7 @@ jobs:
       - name: Fail if the generated validator is stale
         run: |
           npm run generate-validator
-          git diff --exit-code -- src/schema/validate.generated.js
+          git diff --exit-code -- src/schema/
 
       - run: npm test
 
@@ -250,7 +250,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
-          prerelease: true
+          prerelease: false
           name: ${{ github.ref_name }}
           files: |
             release/*.dmg

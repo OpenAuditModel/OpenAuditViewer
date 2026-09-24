@@ -41,6 +41,7 @@ export type ChainState =
 export function useEventIntegrity(
   row: LoadedEvent | undefined,
   allEvents: readonly LoadedEvent[],
+  windowed = false,
 ): { readonly integrity: IntegrityState; readonly chain: ChainState } {
   const [integrity, setIntegrity] = useState<IntegrityState>({ status: "none" });
   const [chain, setChain] = useState<ChainState>({ status: "none" });
@@ -93,7 +94,7 @@ export function useEventIntegrity(
         event: candidate.event as Record<string, unknown>,
       }));
 
-    void verifyChains(members, withKey).then((report) => {
+    void verifyChains(members, { ...withKey, windowed }).then((report) => {
       if (generation.current !== thisRun) {
         return;
       }
@@ -104,7 +105,7 @@ export function useEventIntegrity(
           : { status: "done", chainId, result, unassigned: report.unassigned },
       );
     });
-  }, [row, allEvents, verifier]);
+  }, [row, allEvents, verifier, windowed]);
 
   return { integrity, chain };
 }

@@ -12,5 +12,5 @@ src/schema/audit-event.schema.json
 src/profiles/
 
 # Generated.
-src/schema/validate.generated.js
+src/schema/validate-*.generated.*
 src-tauri/tests/signature-vectors.json

@@ -29,7 +29,7 @@ import type {
 } from "@openauditmodel/cli/conformance/profiles/types.js";
 
 import { validateEvent } from "./schema";
-import canonicalSchema from "@openauditmodel/cli/schemas/v0.1/audit-event.schema.json";
+import canonicalSchema from "@openauditmodel/cli/schemas/v1.0/audit-event.schema.json";
 
 /** This app's precompiled validator, in the shape the engines take. */
 const validator = { schemaId: canonicalSchema.$id, validateEvent };

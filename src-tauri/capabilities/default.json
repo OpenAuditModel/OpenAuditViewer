@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window. fs permissions deliberately carry NO static path scope: the runtime scope is extended by the dialog plugin with exactly the folder the user picked (recursively) and the file the user chose to save — nothing else on disk is reachable from the webview.",
+  "description": "Capability for the main window. fs permissions deliberately carry NO static allow scope: the runtime scope is extended by the dialog plugin with exactly the folder the user picked (recursively) and the file the user chose to save. The app's own configuration and data directories are denied even then — they hold the Kafka source list — and a deny wins over any allow, including one a picked parent folder grants.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -13,6 +13,17 @@
     "fs:allow-read-dir",
     "fs:allow-stat",
     "fs:allow-write-text-file",
+    {
+      "identifier": "fs:scope",
+      "deny": [
+        { "path": "$APPCONFIG" },
+        { "path": "$APPCONFIG/**" },
+        { "path": "$APPDATA" },
+        { "path": "$APPDATA/**" },
+        { "path": "$APPLOCALDATA" },
+        { "path": "$APPLOCALDATA/**" }
+      ]
+    },
     {
       "identifier": "opener:allow-open-url",
       "allow": [

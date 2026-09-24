@@ -18,7 +18,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { buildArchiveReport, SEVERITY_ORDER, type ArchiveReport } from "../lib/report";
-import type { LoadedEvent, LoadSummary } from "../lib/types";
+import type { LoadedEvent, LoadSummary, StreamWindowSummary } from "../lib/types";
 import { useTrustedKey } from "../hooks/useTrustedKey";
 import { formatFingerprint } from "../lib/integrity/trusted-key";
 import { displayPath } from "../lib/paths";
@@ -32,7 +32,12 @@ interface Props {
 type State =
   | { readonly status: "idle" }
   | { readonly status: "running" }
-  | { readonly status: "done"; readonly report: ArchiveReport };
+  | {
+      readonly status: "done";
+      readonly report: ArchiveReport;
+      /** How many events it was produced over. Listening adds more. */
+      readonly covered: number;
+    };
 
 function Row({ label, value }: { readonly label: string; readonly value: string | number }) {
   return (
@@ -43,11 +48,102 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
   );
 }
 
+const STOP_WORDS: Readonly<Record<StreamWindowSummary["stop"], string>> = {
+  "end-of-window": "every partition was read to the end it had when reading started",
+  "event-limit": "the event limit was reached first",
+  "byte-limit": "the 256 MB limit on one window's records was reached first",
+  cancelled: "reading was stopped by hand",
+  "timed-out": "the five-minute limit on one read was reached first",
+  stalled: "records stopped arriving before the end was reached",
+  listening: "it was still listening for new records when this report was produced",
+  failed: "the read failed",
+};
+
+/** How listening ended, for a window that was read whole and then listened. */
+const LISTEN_STOP_WORDS: Readonly<Record<StreamWindowSummary["stop"], string>> = {
+  "end-of-window": "listening ended",
+  "event-limit": "listening stopped at the event limit",
+  "byte-limit": "listening stopped at the 256 MB limit",
+  cancelled: "listening was stopped by hand",
+  "timed-out": "listening stopped after eight hours",
+  stalled: "listening ended",
+  listening: "it was still listening for new records when this report was produced",
+  failed: "listening failed",
+};
+
+/** The Kafka window the events came from, in place of the folder section. */
+function WindowSection({ window }: { readonly window: StreamWindowSummary }) {
+  const complete = window.stop === "end-of-window" || window.listened;
+  return (
+    <section>
+      <h3>The window</h3>
+      <table className="report-table">
+        <tbody>
+          <Row label="Source" value={window.sourceName} />
+          <Row label="Bootstrap servers" value={window.bootstrapServers.join(", ")} />
+          <Row label="Topic" value={window.topic} />
+          <Row label="Connection" value={window.protection} />
+          <Row label="Asked for" value={window.start} />
+          {window.filter !== undefined ? (
+            <Row label="Only records where" value={window.filter} />
+          ) : null}
+          <Row label="Records read from the broker" value={window.scanned} />
+          <Row label="Records kept" value={window.records} />
+          {window.followed > 0 ? (
+            <Row label="Of those, arrived while listening" value={window.followed} />
+          ) : null}
+          <Row label="Read at" value={window.readAt} />
+          <Row
+            label="Reading ended because"
+            value={
+              (window.listened ? LISTEN_STOP_WORDS : STOP_WORDS)[window.stop] +
+              (window.error === undefined ? "" : `: ${window.error}`)
+            }
+          />
+        </tbody>
+      </table>
+      <table className="report-table">
+        <thead>
+          <tr>
+            <th>Partition</th>
+            <th>Offsets read</th>
+            <th>Records</th>
+            <th>Read to its end</th>
+          </tr>
+        </thead>
+        <tbody>
+          {window.partitions.map((partition) => (
+            <tr key={partition.partition}>
+              <td>{partition.partition}</td>
+              <td>
+                {partition.startOffset}–{Math.max(partition.startOffset, partition.endOffset - 1)}
+                {partition.lowOffset > 0 ? ` (oldest held: ${partition.lowOffset})` : ""}
+              </td>
+              <td>{partition.records}</td>
+              <td>{partition.complete ? "yes" : "no"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={complete ? "report-note" : "report-warning"}>
+        {complete ? null : (
+          <>
+            <strong>This window stopped before its end</strong>, and every count below describes the
+            part that was read.{" "}
+          </>
+        )}
+        A window is what the topic held between the offsets above when it was read, and nothing
+        written after that. Chains and flows below are judged on the window alone: a chain that runs
+        past either edge starts or ends there, and a link to an event outside it is reported as not
+        checked rather than as broken.
+      </p>
+    </section>
+  );
+}
+
 export function Report({ events, summary, folder }: Props) {
   const [state, setState] = useState<State>({ status: "idle" });
   const { verifier, key, choose } = useTrustedKey();
-  const onScreen = useRef(events);
-  onScreen.current = events;
   const keyInUse = useRef(verifier);
   keyInUse.current = verifier;
 
@@ -63,13 +159,19 @@ export function Report({ events, summary, folder }: Props) {
     const requestedKey = verifier;
     setState({ status: "running" });
     const report = await buildArchiveReport(requested, summary, folder, requestedKey);
-    if (onScreen.current === requested && keyInUse.current === requestedKey) {
-      setState({ status: "done", report });
+    // A new load remounts this component, so the events can only have grown
+    // since — by listening — and the report still describes the ones it was
+    // produced over, and says so. A key changed meanwhile is another matter:
+    // the report would name a key that is no longer the one in use.
+    if (keyInUse.current !== requestedKey) {
+      setState({ status: "idle" });
+      return;
     }
+    setState({ status: "done", report, covered: requested.length });
   }
 
   if (events.length === 0) {
-    return <p className="empty-state">Open a folder to produce a report.</p>;
+    return <p className="empty-state">Open a folder, or read from Kafka, to produce a report.</p>;
   }
 
   if (state.status !== "done") {
@@ -139,14 +241,22 @@ export function Report({ events, summary, folder }: Props) {
           <p className="report-meta">
             {archive.folder ?? "folder"} · generated {report.generatedAt}
           </p>
+          {events.length > state.covered ? (
+            <p className="report-warning">
+              This report covers the {state.covered.toLocaleString()} events on screen when it was
+              produced; {(events.length - state.covered).toLocaleString()} have arrived since.
+              Produce it again to include them.
+            </p>
+          ) : null}
         </header>
 
         <section>
           <h3>What this report is</h3>
           <p>
-            A record of what the OpenAuditViewer established about the files in this folder, on the
-            machine that produced it, entirely offline. Every number below was computed from the
-            events as they were read.
+            {archive.window === undefined
+              ? "A record of what the OpenAuditViewer established about the files in this folder, on the machine that produced it, entirely offline."
+              : "A record of what the OpenAuditViewer established about a window of records read from a Kafka topic, on the machine that produced it. Reading the window was the only thing that used the network; everything below was computed locally."}{" "}
+            Every number below was computed from the events as they were read.
           </p>
           <p className="report-warning">
             <strong>Conformance is not compliance.</strong> Nothing here is evidence of meeting any
@@ -157,37 +267,41 @@ export function Report({ events, summary, folder }: Props) {
           </p>
         </section>
 
-        <section>
-          <h3>The archive</h3>
-          <table className="report-table">
-            <tbody>
-              <Row label="Events loaded" value={archive.events} />
-              <Row
-                label="Files read"
-                value={`${archive.filesRead} of ${archive.filesFound} found`}
-              />
-              {archive.unreadableFiles > 0 ? (
-                <Row label="Files that could not be read" value={archive.unreadableFiles} />
-              ) : null}
-              {archive.skippedFiles > 0 ? (
-                <Row label="Files declined for size" value={archive.skippedFiles} />
-              ) : null}
-              {archive.unreadableDirectories > 0 ? (
+        {archive.window !== undefined ? <WindowSection window={archive.window} /> : null}
+
+        {archive.window === undefined ? (
+          <section>
+            <h3>The archive</h3>
+            <table className="report-table">
+              <tbody>
+                <Row label="Events loaded" value={archive.events} />
                 <Row
-                  label="Directories that could not be listed"
-                  value={archive.unreadableDirectories}
+                  label="Files read"
+                  value={`${archive.filesRead} of ${archive.filesFound} found`}
                 />
-              ) : null}
-            </tbody>
-          </table>
-          {archive.truncated ? (
-            <p className="report-warning">
-              Loading stopped at {archive.eventLimit} events.{" "}
-              <strong>This folder holds more than was read</strong>, and every count below describes
-              the part that was.
-            </p>
-          ) : null}
-        </section>
+                {archive.unreadableFiles > 0 ? (
+                  <Row label="Files that could not be read" value={archive.unreadableFiles} />
+                ) : null}
+                {archive.skippedFiles > 0 ? (
+                  <Row label="Files declined for size" value={archive.skippedFiles} />
+                ) : null}
+                {archive.unreadableDirectories > 0 ? (
+                  <Row
+                    label="Directories that could not be listed"
+                    value={archive.unreadableDirectories}
+                  />
+                ) : null}
+              </tbody>
+            </table>
+            {archive.truncated ? (
+              <p className="report-warning">
+                Loading stopped at {archive.eventLimit} events.{" "}
+                <strong>This folder holds more than was read</strong>, and every count below
+                describes the part that was.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         <section>
           <h3>Schema validity</h3>
@@ -195,13 +309,19 @@ export function Report({ events, summary, folder }: Props) {
             <tbody>
               <Row label="Valid against the canonical schema" value={validity.valid} />
               <Row label="Invalid" value={validity.invalid} />
+              {validity.notEvaluated > 0 ? (
+                <Row
+                  label="Not evaluated — a specification version this app does not implement"
+                  value={validity.notEvaluated}
+                />
+              ) : null}
             </tbody>
           </table>
           {validity.worstFiles.length > 0 ? (
             <table className="report-table">
               <thead>
                 <tr>
-                  <th>File</th>
+                  <th>{archive.window === undefined ? "File" : "Partition"}</th>
                   <th>Invalid events</th>
                 </tr>
               </thead>
@@ -217,7 +337,8 @@ export function Report({ events, summary, folder }: Props) {
           ) : null}
           {validity.filesWithInvalid > validity.worstFiles.length ? (
             <p className="report-note">
-              and {validity.filesWithInvalid - validity.worstFiles.length} further file
+              and {validity.filesWithInvalid - validity.worstFiles.length} further{" "}
+              {archive.window === undefined ? "file" : "partition"}
               {validity.filesWithInvalid - validity.worstFiles.length === 1 ? "" : "s"} holding
               invalid events, not listed here.
             </p>
@@ -296,6 +417,12 @@ export function Report({ events, summary, folder }: Props) {
                 <>
                   <Row label="Chains checked" value={integrity.chains.checked} />
                   <Row label="Chains intact" value={integrity.chains.intact} />
+                  {integrity.chains.outsideWindow > 0 ? (
+                    <Row
+                      label="Chains with links to events outside the window, not checked"
+                      value={integrity.chains.outsideWindow}
+                    />
+                  ) : null}
                   {integrity.chains.unassigned > 0 ? (
                     <Row
                       label="Chain members that could not be verified"
@@ -334,7 +461,10 @@ export function Report({ events, summary, folder }: Props) {
               <strong>Not every chain is intact.</strong>{" "}
               {integrity.chains.unassigned > 0
                 ? `${integrity.chains.unassigned} event${integrity.chains.unassigned === 1 ? "" : "s"} declaring a chain could not be verified, so the chains they belong to are not established.`
-                : "At least one chain has a broken link or a modified event."}
+                : integrity.chains.checked - integrity.chains.intact ===
+                    integrity.chains.outsideWindow
+                  ? "Every link that could be checked held. The others point at events outside the window that was read, and were not checked: read the topic from its earliest offset to check whole chains."
+                  : "At least one chain has a broken link or a modified event."}
             </p>
           ) : null}
           <p className="report-note">

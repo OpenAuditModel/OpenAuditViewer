@@ -3,6 +3,7 @@ use tauri::{
     Runtime,
 };
 
+mod kafka;
 pub mod signature;
 mod update;
 
@@ -34,8 +35,15 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(navigation_guard())
         .manage(signature::TrustedKeyState::default())
+        .manage(kafka::KafkaState::default())
         .invoke_handler(tauri::generate_handler![
             update::check_latest_release,
+            kafka::kafka_sources,
+            kafka::kafka_save_source,
+            kafka::kafka_delete_source,
+            kafka::kafka_choose_ca,
+            kafka::kafka_read,
+            kafka::kafka_cancel_read,
             signature::choose_public_key,
             signature::forget_public_key,
             signature::trusted_public_key,
