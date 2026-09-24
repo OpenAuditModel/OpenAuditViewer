@@ -70,6 +70,14 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # librdkafka 2.12's CMake build includes curl.h even with curl turned
+      # off: one #ifdef tests a macro its generated config header always
+      # defines, if only to 0. The header must exist; nothing of curl is
+      # compiled in or linked. Windows and macOS are not affected — Windows
+      # takes its definitions from CMake, and the macOS SDK carries the header.
+      - name: Install the curl header librdkafka includes
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev
+
       - name: Start the broker
         # bash, not the default `bash -e`: with pipefail, a broker that fails
         # to start fails this step rather than the tests two steps later.
