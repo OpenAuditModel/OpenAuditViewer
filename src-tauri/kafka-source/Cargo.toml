@@ -1,0 +1,40 @@
+[package]
+name = "oav-kafka"
+version = "1.0.0"
+description = "Reads a bounded window of a Kafka topic for OpenAuditViewer, and nothing else"
+authors = ["OpenAuditModel"]
+edition = "2021"
+publish = false
+
+# Kept apart from the Tauri crate so that it builds and tests without a
+# webview: its tests run against a real broker, and CI can run them on a
+# machine that has Docker but no desktop toolchain.
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# Reading event.name and application.name when a read is filtered by them.
+serde_json = "1"
+base64 = "0.22"
+# The Mozilla root set, for brokers with a publicly trusted certificate. The
+# OpenSSL built into librdkafka reads no operating-system trust store on macOS,
+# so without this a broker behind a public CA would be refused there and
+# accepted on Windows.
+webpki-root-certs = "1"
+
+# librdkafka is built from source and linked statically on every platform, so
+# the app ships no separate native library to sign. OpenSSL is vendored for TLS
+# and SCRAM; libsasl2 is not linked (GSSAPI is out of scope).
+#
+# An Apple Silicon Mac builds it with librdkafka's own configure script, which
+# needs only the make and Perl macOS has. Everywhere else it is built with
+# CMake, because only CMake is told the target: the universal macOS image
+# compiles its x86_64 slice on an arm64 machine, and configure would build that
+# slice for the wrong architecture. Windows builds with CMake anyway.
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+rdkafka = { version = "0.39", default-features = false, features = ["ssl-vendored", "libz-static", "zstd"] }
+
+[target.'cfg(not(all(target_os = "macos", target_arch = "aarch64")))'.dependencies]
+rdkafka = { version = "0.39", default-features = false, features = ["cmake-build", "ssl-vendored", "libz-static", "zstd"] }
+
+[dev-dependencies]
+futures = { version = "0.3", default-features = false, features = ["executor"] }

@@ -12,8 +12,11 @@
  * folder-wide numbers sat directly above one flow's detail as if they
  * described it.
  *
- * Everything drawn here is observed, not inferred: an edge exists only where
- * two consecutive events of the flow sit in different applications.
+ * Everything drawn here is observed, not inferred. Where the flow's events
+ * declare their parents (`request.parentSpanId`, spec 1.0), an edge joins a
+ * caller to the callee that names it; where they do not, an edge joins two
+ * consecutive events of the flow that sit in different applications, and is
+ * drawn dashed to say it is only an order in time.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { applicationColor } from "../lib/app-color";
@@ -146,14 +149,25 @@ export function FlowMap({ group, onSelectApp }: Props) {
             <g key={pairKey(edge.from, edge.to)} className="flow-g">
               <path
                 d={path}
-                className={backward ? "flow-edge backward" : "flow-edge"}
+                className={[
+                  "flow-edge",
+                  backward ? "backward" : "",
+                  edge.declared === 0 ? "inferred" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 stroke={color}
                 strokeWidth={edgeWidth(edge.count)}
                 markerEnd="url(#flow-arrow)"
               >
                 <title>
-                  {edge.from} → {edge.to}: {edge.count} transition{edge.count === 1 ? "" : "s"},
-                  median gap {formatDuration(Math.round(edge.medianDeltaMs))}
+                  {edge.from} → {edge.to}: {edge.count} transition{edge.count === 1 ? "" : "s"}
+                  {edge.declared === edge.count
+                    ? ", each declared by the callee's parentSpanId"
+                    : edge.declared === 0
+                      ? ", by order in time only — no event here declares its parent"
+                      : `, ${edge.declared} declared by parentSpanId`}
+                  , median gap {formatDuration(Math.round(edge.medianDeltaMs))}
                   {edge.failures > 0 ? `, ${edge.failures} ending in failure` : ""}
                 </title>
               </path>

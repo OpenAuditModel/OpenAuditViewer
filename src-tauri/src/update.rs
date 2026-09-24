@@ -1,9 +1,10 @@
-//! The one outbound request this application ever makes, and only when asked.
+//! The update check: one outbound request, and only when asked.
 //!
 //! The app's promise is that nothing leaves the machine: no telemetry, no
-//! crash reporting, no remote validation. An update check is a deliberate,
-//! narrow exception to "the app opens no socket", and it is built so that the
-//! promise about *data* stays intact and easy to verify:
+//! crash reporting, no remote validation. The update check is one of two
+//! deliberate, narrow exceptions to "the app opens no socket" — the other is
+//! reading from a Kafka source the operator saved (src/kafka.rs) — and it is
+//! built so that the promise about *data* stays intact and easy to verify:
 //!
 //! * It runs only from an explicit click. There is no timer, no check on
 //!   launch, and nothing is remembered between runs.

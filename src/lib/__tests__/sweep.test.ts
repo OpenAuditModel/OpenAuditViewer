@@ -32,6 +32,7 @@ async function signedRow(id: number): Promise<LoadedEvent> {
     sourceFormat: "jsonl",
     event,
     valid: true,
+    notEvaluated: false,
     errors: [],
     privacyFindings: [],
     eventName: "data.record.update",

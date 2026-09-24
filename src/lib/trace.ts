@@ -37,7 +37,10 @@ export interface TraceGroup {
   readonly hasFailure: boolean;
 }
 
-function requestField(row: LoadedEvent, field: "traceId" | "correlationId"): string | undefined {
+function requestField(
+  row: LoadedEvent,
+  field: "traceId" | "correlationId" | "spanId" | "parentSpanId",
+): string | undefined {
   if (row.event === null) {
     return undefined;
   }
@@ -201,6 +204,12 @@ export interface FlowEdge {
   readonly from: string;
   readonly to: string;
   readonly count: number;
+  /**
+   * How many of `count` an event declared: its `request.parentSpanId` names
+   * the span of the event on the other side (spec 1.0). The rest are
+   * neighbours in time, which is what the map had before events could say.
+   */
+  readonly declared: number;
   readonly failures: number;
   /** Median wall-clock gap between the two sides of the transition. */
   readonly medianDeltaMs: number;
@@ -234,9 +243,49 @@ function median(values: readonly number[]): number {
  * several aggregates them, which is why the numbers are counts and medians
  * rather than single observations.
  */
+/**
+ * The caller-to-callee pairs a flow declares: a member whose
+ * `request.parentSpanId` is another member's `request.spanId` was caused by
+ * that member. Spans are only compared inside one flow, where they share a
+ * trace; a parent that was not loaded declares nothing here.
+ */
+export function declaredLinks(group: TraceGroup): [TraceMember, TraceMember][] {
+  const bySpan = new Map<string, TraceMember>();
+  for (const member of group.members) {
+    const span = requestField(member.row, "spanId");
+    if (span !== undefined && !bySpan.has(span)) {
+      bySpan.set(span, member);
+    }
+  }
+  const links: [TraceMember, TraceMember][] = [];
+  for (const member of group.members) {
+    const parentSpan = requestField(member.row, "parentSpanId");
+    const parent = parentSpan === undefined ? undefined : bySpan.get(parentSpan);
+    if (parent !== undefined && parent !== member) {
+      links.push([parent, member]);
+    }
+  }
+  return links;
+}
+
 export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
   const appStats = new Map<string, { depth: number; events: number; failures: number }>();
-  const edgeStats = new Map<string, { count: number; failures: number; deltas: number[] }>();
+  const edgeStats = new Map<
+    string,
+    { count: number; declared: number; failures: number; deltas: number[] }
+  >();
+  const addEdge = (from: TraceMember, to: TraceMember, declared: boolean): void => {
+    if (from.application === to.application) return;
+    const key = pairKey(from.application, to.application);
+    const entry = edgeStats.get(key) ?? { count: 0, declared: 0, failures: 0, deltas: [] };
+    entry.count += 1;
+    if (declared) entry.declared += 1;
+    if (to.row.outcome === "failure") {
+      entry.failures += 1;
+    }
+    entry.deltas.push(Math.max(0, to.timeMs - from.timeMs));
+    edgeStats.set(key, entry);
+  };
 
   for (const group of groups) {
     for (const [index, application] of group.applications.entries()) {
@@ -258,20 +307,22 @@ export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
       }
     }
 
+    // A flow whose events declare their parents is drawn from what they
+    // declare: concurrent calls interleave in time, and neighbours in time
+    // would join a callee to whichever call happened to come just before it.
+    // Only a flow that declares nothing falls back to time order.
+    const links = declaredLinks(group);
+    if (links.length > 0) {
+      for (const [parent, child] of links) {
+        addEdge(parent, child, true);
+      }
+      continue;
+    }
     for (let index = 1; index < group.members.length; index += 1) {
       const previous = group.members[index - 1];
       const current = group.members[index];
       if (previous === undefined || current === undefined) continue;
-      if (previous.application === current.application) continue;
-
-      const key = pairKey(previous.application, current.application);
-      const entry = edgeStats.get(key) ?? { count: 0, failures: 0, deltas: [] };
-      entry.count += 1;
-      if (current.row.outcome === "failure") {
-        entry.failures += 1;
-      }
-      entry.deltas.push(Math.max(0, current.timeMs - previous.timeMs));
-      edgeStats.set(key, entry);
+      addEdge(previous, current, false);
     }
   }
 
@@ -290,6 +341,7 @@ export function buildFlowTopology(groups: readonly TraceGroup[]): FlowTopology {
       from,
       to,
       count: entry.count,
+      declared: entry.declared,
       failures: entry.failures,
       medianDeltaMs: median(entry.deltas),
     };

@@ -19,6 +19,7 @@ import {
   type TraceGroup,
   type TraceMember,
 } from "../lib/trace";
+import { isStreamWindow } from "../lib/stream-window";
 
 interface Props {
   readonly events: readonly LoadedEvent[];
@@ -62,6 +63,13 @@ export function ObservedFlow({ events, onOpenEvent, onSelectApplication }: Props
 
   return (
     <div className="traces">
+      {isStreamWindow(events) ? (
+        <p className="detail-note-inline">
+          Flows are drawn from the window that was read. A call made before the window started, or
+          recorded in a partition it did not include, is not here, and its caller or callee draws as
+          the edge of the flow.
+        </p>
+      ) : null}
       {selected === undefined ? null : (
         <FlowMap group={selected} onSelectApp={onSelectApplication} />
       )}
@@ -116,7 +124,8 @@ export function ObservedFlow({ events, onOpenEvent, onSelectApplication }: Props
             <p className="detail-note-inline">
               Built from the loaded events that share this trace. A step the producer never logged,
               or logged in a file that was not opened, does not appear, and nothing marks where it
-              would have been.
+              would have been. Solid arrows follow a parent span an event declares; dashed ones only
+              follow the order in time.
             </p>
 
             <div className="lanes">

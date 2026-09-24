@@ -22,14 +22,21 @@ const LINK_TITLE: Readonly<Record<LinkState, string>> = {
   valid: "previousHash matches the preceding event",
   broken: "previousHash does not match the preceding event",
   missing: "no previousHash declared, but this is not the first event",
+  unchecked:
+    "the preceding event is outside the window that was read, so this link was not checked",
 };
 
 function Link({ state }: { readonly state: LinkState }) {
   return (
     <span className={`chain-link chain-link-${state}`} title={LINK_TITLE[state]} aria-hidden="true">
-      {state === "valid" ? "" : "✕"}
+      {state === "valid" ? "" : state === "unchecked" ? "?" : "✕"}
     </span>
   );
+}
+
+/** A finding that says a link was not checked, rather than that something failed. */
+function windowOnly(kind: string): boolean {
+  return kind === "link-outside-window";
 }
 
 function Item({
@@ -56,7 +63,7 @@ function Item({
       </span>
     );
   }
-  const bad = item.problems.length > 0;
+  const bad = item.problems.some((problem) => !windowOnly(problem.kind));
   return (
     <button
       type="button"
@@ -87,8 +94,8 @@ export function ChainStrip({ result, onOpenEvent }: Props) {
       <code className="chain-id">{result.chainId}</code>
       <p className="detail-note-inline">
         Drawn from the {result.eventCount} loaded event{result.eventCount === 1 ? "" : "s"} that
-        declare this chain. An event that was not in this folder, or was never written, cannot
-        appear here — a chain whose newest events were deleted draws as a shorter, unbroken line.
+        declare this chain. An event that was not loaded, or was never written, cannot appear here —
+        a chain whose newest events were deleted draws as a shorter, unbroken line.
       </p>
 
       <div className="chain-line">
@@ -137,7 +144,10 @@ export function ChainStrip({ result, onOpenEvent }: Props) {
         </div>
       ) : null}
       {problems.slice(0, PROBLEMS_SHOWN).map(({ label, sequence, problem }) => (
-        <div className="check-bad rule-line" key={`${label}-${problem.kind}`}>
+        <div
+          className={windowOnly(problem.kind) ? "check-muted rule-line" : "check-bad rule-line"}
+          key={`${label}-${problem.kind}`}
+        >
           <button type="button" className="link-button" onClick={() => onOpenEvent(label)}>
             #{sequence}
           </button>

@@ -371,6 +371,7 @@ describe("trace grouping and topology", () => {
       sourceFile: "t.jsonl",
       sourceFormat: "jsonl",
       valid: true,
+      notEvaluated: false,
       errors: [],
       privacyFindings: [],
       time,
@@ -412,6 +413,53 @@ describe("trace grouping and topology", () => {
     expect(topology.edges).toHaveLength(1);
     expect(topology.edges[0]?.from).toBe("billing service");
     expect(topology.edges[0]?.to).toBe("auth");
+  });
+
+  it("draws a flow from the parents its events declare, not from their order in time", () => {
+    // The gateway calls orders and payments concurrently; orders then calls
+    // inventory. In time the calls interleave — gateway, payments, orders,
+    // inventory — so neighbours in time would join payments to orders and
+    // never show gateway calling orders. The declared parents say what
+    // actually called what.
+    const groups = buildTraceGroups([
+      row("g", "2026-08-05T10:00:00.000Z", "gateway", "route.forward", {
+        traceId: trace,
+        spanId: "000000000000000a",
+      }),
+      row("p", "2026-08-05T10:00:00.100Z", "payments", "payment.authorize", {
+        traceId: trace,
+        spanId: "000000000000000b",
+        parentSpanId: "000000000000000a",
+      }),
+      row("o", "2026-08-05T10:00:00.200Z", "orders", "order.create", {
+        traceId: trace,
+        spanId: "000000000000000c",
+        parentSpanId: "000000000000000a",
+      }),
+      row("i", "2026-08-05T10:00:00.300Z", "inventory", "stock.reserve", {
+        traceId: trace,
+        spanId: "000000000000000d",
+        parentSpanId: "000000000000000c",
+      }),
+    ]);
+    const edges = buildFlowTopology(groups)
+      .edges.map((edge) => `${edge.from}->${edge.to} ${edge.declared}/${edge.count}`)
+      .sort();
+    expect(edges).toEqual([
+      "gateway->orders 1/1",
+      "gateway->payments 1/1",
+      "orders->inventory 1/1",
+    ]);
+  });
+
+  it("falls back to order in time when no event declares a parent, and says so", () => {
+    const groups = buildTraceGroups([
+      row("t1", "2026-08-05T10:00:00.000Z", "gateway", "op.start", { traceId: trace }),
+      row("t2", "2026-08-05T10:00:01.000Z", "orders", "op.step", { traceId: trace }),
+    ]);
+    const [edge] = buildFlowTopology(groups).edges;
+    expect(edge?.count).toBe(1);
+    expect(edge?.declared).toBe(0);
   });
 
   it("does not merge correlation-only events when the correlationId spans several traces", () => {
@@ -458,6 +506,7 @@ describe("archive coverage", () => {
       sourceFormat: "jsonl",
       event,
       valid,
+      notEvaluated: false,
       errors: [],
       privacyFindings: [],
       eventName: (event["event"] as Record<string, unknown> | undefined)?.["name"] as
@@ -621,6 +670,7 @@ describe("archive report", () => {
       sourceFormat: "jsonl",
       event,
       valid: event !== null,
+      notEvaluated: false,
       errors: [],
       privacyFindings: [],
       ...overrides,
@@ -710,6 +760,7 @@ describe("archive report", () => {
     expect(report.integrity.chains).toEqual({
       checked: 1,
       intact: 1,
+      outsideWindow: 0,
       unassigned: 0,
       allIntact: true,
     });
@@ -941,6 +992,7 @@ describe("where to start", () => {
       sourceFormat: "jsonl",
       event: valid ? minimalEvent(id) : null,
       valid,
+      notEvaluated: false,
       errors: [],
       eventName,
       applicationName: application,

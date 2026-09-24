@@ -18,6 +18,7 @@
  */
 import { UNKNOWN_APPLICATION } from "./filter";
 import type { LoadedEvent } from "./types";
+import { sourceGroup } from "./stream-window";
 
 /** One place problems gather, and what kind they are. */
 export interface Concentration {
@@ -105,11 +106,7 @@ const LIMIT = 5;
  * each row by the time a folder finishes loading.
  */
 export function triage(events: readonly LoadedEvent[]): Triage {
-  const files = rank(
-    group(events, (row) => row.sourceFile),
-    (entry) => entry.invalid,
-    LIMIT,
-  );
+  const files = rank(group(events, sourceGroup), (entry) => entry.invalid, LIMIT);
   const names = rank(
     group(events, (row) => row.eventName ?? "(no event name)"),
     (entry) => entry.findings,

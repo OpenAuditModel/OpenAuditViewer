@@ -31,10 +31,19 @@ interface Props {
   readonly bookmarked: boolean;
   readonly onToggleBookmark: (rowId: string) => void;
   readonly onSelectRow: (rowId: string) => void;
+  /** The events are a Kafka window with edges; see `verifyChains`' `windowed`. */
+  readonly windowed?: boolean;
 }
 
-export function EventDetail({ row, allEvents, bookmarked, onToggleBookmark, onSelectRow }: Props) {
-  const { integrity, chain } = useEventIntegrity(row, allEvents);
+export function EventDetail({
+  row,
+  allEvents,
+  bookmarked,
+  onToggleBookmark,
+  onSelectRow,
+  windowed = false,
+}: Props) {
+  const { integrity, chain } = useEventIntegrity(row, allEvents, windowed);
 
   const traceGroups = useMemo(() => buildTraceGroups(allEvents), [allEvents]);
   const flow = row === undefined ? undefined : findGroupForRow(traceGroups, row.rowId);
@@ -70,8 +79,10 @@ export function EventDetail({ row, allEvents, bookmarked, onToggleBookmark, onSe
         >
           {bookmarked ? "★" : "☆"}
         </button>
-        <span className={row.valid ? "status-ok" : "status-bad"}>
-          {row.valid ? "Valid" : "Invalid"}
+        <span
+          className={row.valid ? "status-ok" : row.notEvaluated ? "status-muted" : "status-bad"}
+        >
+          {row.valid ? "Valid" : row.notEvaluated ? "Not evaluated" : "Invalid"}
         </span>
         <span className="detail-source" title={row.sourceFile}>
           {row.sourceFile} · {row.sourceFormat}

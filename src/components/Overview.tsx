@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { LoadedEvent, LoadSummary } from "../lib/types";
 import { readIntegrity } from "../lib/integrity/verify-event";
 import { verifyChains } from "../lib/integrity/chain";
+import { chainVerdict } from "../lib/chain-view";
 import type { ChainReport } from "../lib/integrity/types";
 import { SEVERITY_ORDER, type Severity } from "@openauditmodel/cli/conformance/privacy/types.js";
 import { triage, type Concentration } from "../lib/triage";
@@ -31,6 +32,8 @@ interface Props {
   readonly onOpenEvent: (rowId: string) => void;
   /** The opened folder, so paths can be shown relative to it. */
   readonly folder: string | undefined;
+  /** The events are a Kafka window with edges; see `verifyChains`' `windowed`. */
+  readonly windowed?: boolean;
 }
 
 interface AppRow {
@@ -80,7 +83,14 @@ function shortChainId(chainId: string): string {
  */
 const AUTOMATIC_CHAIN_LIMIT = 5_000;
 
-export function Overview({ events, summary, onSelectApplication, onOpenEvent, folder }: Props) {
+export function Overview({
+  events,
+  summary,
+  onSelectApplication,
+  onOpenEvent,
+  folder,
+  windowed = false,
+}: Props) {
   const [openChain, setOpenChain] = useState<string | undefined>();
   const [chainReport, setChainReport] = useState<ChainReport | undefined>();
   const [chainsVerifying, setChainsVerifying] = useState(false);
@@ -149,10 +159,10 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
 
     let cancelled = false;
     setChainsVerifying(true);
-    void verifyChains(
-      chainInputs,
-      verifier === undefined ? {} : { signatureVerifier: verifier },
-    ).then((report) => {
+    void verifyChains(chainInputs, {
+      windowed,
+      ...(verifier === undefined ? {} : { signatureVerifier: verifier }),
+    }).then((report) => {
       if (!cancelled) {
         setChainReport(report);
         setChainsVerifying(false);
@@ -161,7 +171,7 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
     return () => {
       cancelled = true;
     };
-  }, [chainInputs, verifier]);
+  }, [chainInputs, verifier, windowed]);
 
   // Which events are on screen right now. Work started on request runs for as
   // long as it runs, and the user is free to open another folder meanwhile;
@@ -183,10 +193,10 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
   async function runChainVerification(): Promise<void> {
     const requested = events;
     setChainsVerifying(true);
-    const report = await verifyChains(
-      chainInputs,
-      verifier === undefined ? {} : { signatureVerifier: verifier },
-    );
+    const report = await verifyChains(chainInputs, {
+      windowed,
+      ...(verifier === undefined ? {} : { signatureVerifier: verifier }),
+    });
     if (onScreen.current !== requested || keyInUse.current !== verifier) {
       return;
     }
@@ -232,7 +242,8 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
   const problems = useMemo(() => triage(events), [events]);
 
   const totalFindings = events.reduce((sum, row) => sum + row.privacyFindings.length, 0);
-  const invalidCount = events.length - events.filter((row) => row.valid).length;
+  const notEvaluatedCount = events.filter((row) => row.notEvaluated).length;
+  const invalidCount = events.length - events.filter((row) => row.valid).length - notEvaluatedCount;
   const eventsWithFindings = events.filter((row) => row.privacyFindings.length > 0).length;
   const maxAppCount = applications[0]?.count ?? 1;
 
@@ -256,7 +267,7 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
   if (events.length === 0) {
     return (
       <div className="overview empty-state">
-        <p>Open a folder to see an overview of its audit events.</p>
+        <p>Open a folder, or read from Kafka, to see an overview of its audit events.</p>
       </div>
     );
   }
@@ -274,6 +285,15 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
           </div>
           <div className="stat-label">Schema invalid</div>
         </div>
+        {notEvaluatedCount > 0 ? (
+          <div
+            className="stat-card"
+            title="These events declare a specification version this app does not implement, so no schema was applied to them. They are neither valid nor invalid."
+          >
+            <div className="stat-value">{notEvaluatedCount}</div>
+            <div className="stat-label">Not evaluated</div>
+          </div>
+        ) : null}
         <div className="stat-card">
           <div className={totalFindings > 0 ? "stat-value stat-warned" : "stat-value stat-good"}>
             {totalFindings}
@@ -285,8 +305,14 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
           <div className="stat-label">With integrity hash</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{summary?.filesRead ?? "—"}</div>
-          <div className="stat-label">Files read</div>
+          <div className="stat-value">
+            {summary?.window !== undefined
+              ? summary.window.partitions.length
+              : (summary?.filesRead ?? "—")}
+          </div>
+          <div className="stat-label">
+            {summary?.window !== undefined ? "Partitions read" : "Files read"}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-value">{applications.length}</div>
@@ -409,9 +435,18 @@ export function Overview({ events, summary, onSelectApplication, onOpenEvent, fo
                         ? `, seq ${chain.firstSequence}–${chain.lastSequence}`
                         : ""}
                     </span>
-                    <span className={chain.intact ? "count-ok" : "count-bad"}>
-                      {chain.intact ? "intact" : `${chain.findings.length} issues`}
-                    </span>
+                    {chainVerdict(chain) === "intact" ? (
+                      <span className="count-ok">intact</span>
+                    ) : chainVerdict(chain) === "unchecked" ? (
+                      <span
+                        className="count-unchecked"
+                        title="Every link that could be checked held; the others point at events outside the window that was read"
+                      >
+                        {chain.findings.length} links outside the window
+                      </span>
+                    ) : (
+                      <span className="count-bad">{chain.findings.length} issues</span>
+                    )}
                     <button
                       type="button"
                       className="link-button"

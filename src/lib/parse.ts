@@ -3,6 +3,7 @@
  * against the canonical schema, then extract the handful of fields the table
  * displays directly rather than re-reading the JSON on every render.
  */
+import { wasNotEvaluated } from "@openauditmodel/cli/conformance/validator-interface.js";
 import { validateEvent } from "./schema";
 import { lintEvent } from "./engines";
 import type { LoadedEvent, SourceFormat } from "./types";
@@ -34,6 +35,7 @@ function buildRow(
       sourceFormat,
       event: null,
       valid: false,
+      notEvaluated: false,
       errors: [
         {
           path: "/",
@@ -63,6 +65,7 @@ function buildRow(
     sourceFormat,
     event,
     valid: errors.length === 0,
+    notEvaluated: wasNotEvaluated(errors),
     errors,
     privacyFindings,
     time: asString(event["time"]),
@@ -115,6 +118,30 @@ export function parseJsonLine(
   } catch (cause) {
     return buildRow(fileName, "jsonl", null, {
       forcedError: `line ${lineNumber}: not valid JSON (${(cause as Error).message})`,
+    });
+  }
+}
+
+/**
+ * Turns one Kafka record into a row. `label` names where it came from — the
+ * topic, partition and offset — beside the event rather than inside it; a
+ * record whose value could not be given as text arrives with the reason
+ * instead, and is shown as a row that is not an event, as an unreadable line
+ * of a file is.
+ */
+export function parseRecord(
+  label: string,
+  payload: string | undefined,
+  problem?: string,
+): LoadedEvent {
+  if (payload === undefined) {
+    return buildRow(label, "kafka", null, { forcedError: problem ?? "the record has no value" });
+  }
+  try {
+    return buildRow(label, "kafka", asRecord(JSON.parse(payload)) ?? null);
+  } catch (cause) {
+    return buildRow(label, "kafka", null, {
+      forcedError: `not valid JSON (${(cause as Error).message})`,
     });
   }
 }

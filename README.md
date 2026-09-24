@@ -2,18 +2,26 @@
 
 A desktop application for reading [OpenAuditModel](https://github.com/OpenAuditModel/OpenAuditModel)
 audit logs. Point it at a folder — a few files or a few hundred, from one application or a dozen —
-and it validates every event, scans for values that should not be in an audit log, verifies
-tamper-evidence digests and chains, checks domain profiles, and reconstructs the flows that crossed
-application boundaries.
+or at a Kafka topic, and it validates every event, scans for values that should not be in an audit
+log, verifies tamper-evidence digests and chains, checks domain profiles, and reconstructs the flows
+that crossed application boundaries.
 
 The analysis runs entirely on your machine. The app reads only from sources you point it at, sends
 audit content nowhere — no telemetry, no crash reporting, no remote validation service — and writes
-nothing except an export you ask for. It opens a socket for exactly one thing, and only when you
-press the button: an update check in Settings that asks GitHub for the latest release tag. Never on
-launch, never on a timer.
+nothing except an export you ask for and the list of Kafka sources you save. It opens a network
+connection for two things, and only when you ask: reading a window from a Kafka broker you saved,
+and an update check in Settings that asks GitHub for the latest release tag. Never on launch, never
+on a timer. A folder is read without any network at all.
 
-**Status: experimental.** It works and it is tested, but it is young, it has not been externally
-audited, and interfaces may change.
+**Status: 1.0.** It reads OpenAuditModel 1.0 events, and events written under 0.1. Every verdict it
+shows comes from the published engines and is held to the command line tool's by tests, so as a
+reader and verifier it is as stable as the specification it implements. It has not been externally
+audited, and it is not yet proven in production — the same claim the specification makes about
+itself.
+
+An event is validated against the schema of the version it declares. One that declares a version
+this app does not implement — a later minor, another major — is shown as **not evaluated**: never as
+valid, because nothing was checked, and not as invalid, because nothing was found wrong.
 
 ![The Overview tab, showing counts, a per-application breakdown, privacy findings by rule, and chain health](assets/overview.png)
 
@@ -47,6 +55,58 @@ Only what the specification defines. CSV and other flat exports are deliberately
 event model is a JSON structure, and mapping arbitrary columns onto it would mean inventing a
 correspondence the producer never declared, then presenting the result as conformant. Converting
 an export to JSON Lines is the producer's decision to make, and their mapping to document.
+
+### From a Kafka topic
+
+**Read from Kafka…** reads a window of a topic, from every partition or the ones you name:
+
+- **Newest** or **Oldest** — the newest or oldest _n_ records across the whole topic, by the time
+  each record carries (500 unless you say otherwise);
+- **Newest per partition** — the last _n_ records of each partition;
+- **Time range** — from a date and time, until another or until now;
+- **Offsets** — from one offset in every partition (`120`) or one for each partition
+  (`0:120, 2:40`), to an offset or to the end;
+- **Everything** — from the oldest record the broker holds.
+
+A window ends where it was told to, or at the end each partition had when reading started. With
+**Keep listening**, reading then goes on: records that arrive afterwards are added to the screen as
+they come — at most once a second — with a **Listening** badge in the toolbar and a Stop beside it.
+A window opens in the Events table newest read first, so new records fade in at the top; scrolled
+further down, the rows you are reading stay where they are and a pill says how many arrived above.
+The Source column sorts by the order events were read in, for a folder as for a window.
+A filter — event name starts with, application, text the record contains — keeps only the events
+that match; the broker still sends every record in the range, and the window says how many were
+read and how many kept. Each record's value is read as one event, exactly as a line of a JSON Lines
+file is; its topic, partition and offset are where it came from, shown beside the event (the Source
+column reads `partition@offset`) and never added to it.
+
+- **Nothing is left on the broker.** Partitions are assigned and sought, never subscribed, so no
+  consumer group is joined; no offset is committed; a topic that does not exist is reported, not
+  created. The broker sees a client named `openaudit-viewer`. librdkafka still names a group,
+  `openaudit-viewer-readonly`, and asks which broker coordinates it — on a cluster no consumer has
+  ever used, that first question makes the broker create its internal offsets topic, as any
+  consumer's would — but the group is never joined and holds nothing.
+- **Connections:** TLS with SASL (PLAIN, SCRAM-SHA-256 or SCRAM-SHA-512), TLS alone, or no TLS at
+  all — which the form warns against, since the events then cross the network unencrypted. SASL
+  without TLS is not offered. The broker's certificate is verified against the public certificate
+  authorities, or against a CA file you choose for a private one.
+- **Saving a source** asks for confirmation in a system dialog that names the brokers, the
+  connection and the user. The password goes to the system keychain — macOS Keychain, Windows
+  Credential Manager — and is sent only to the brokers, as the user and over the connection it was
+  entered for: change any of those and it has to be entered again. The source list itself is a file
+  in the app's configuration folder, with no secret in it.
+- **A window is bounded**: 100,000 events, 256 MB of records, five minutes, and 30 seconds without a
+  record. Whichever ends it is shown, and a window that stopped before its end says so above
+  everything else. Listening counts what it adds against the same 100,000 and stops after eight
+  hours; it never stalls, since waiting is what it does.
+- **Chains and flows are judged on the window.** A chain whose events are spread across partitions,
+  read from a point in time or by the newest records of each partition, has holes the window left.
+  A link across such a hole is shown as **not checked** — neither held nor broken — and a chain
+  whose only findings are those is counted apart from intact and broken ones. Read from the oldest
+  record to check whole chains.
+- **Not supported:** client certificates (mutual TLS), OAUTHBEARER and cloud-provider sign-in such
+  as AWS IAM, Kerberos, and values that are not JSON text — Avro, Protobuf and Schema Registry
+  framing. Each is a deliberate edge of this release, not an oversight.
 
 ## What it checks
 
@@ -85,10 +145,11 @@ dialog opened from Rust and read there; the webview, which renders untrusted log
 sees the key or names a path. Rust is also where the reference verifier's behaviour can be matched:
 Web Crypto requires an RSA-PSS salt length up front where the CLI accepts whatever the signer chose,
 and its Ed25519 support depends on the webview runtime a machine happens to have. Every answer is
-held to the CLI's by test vectors the canonical package itself produced. Three differ on purpose, and
-each refuses something the CLI accepts: a small-order Ed25519 key (under which the CLI accepts a
-trivial signature for any message), an Ed25519 signature whose R is the identity point, and an
-RSASSA-PSS key that restricts its own parameters. Some files are also refused when chosen, where the
+held to the CLI's by test vectors the canonical package itself produced. One differs on purpose, and
+refuses something the CLI accepts: an RSASSA-PSS key that restricts its own parameters. A
+small-order Ed25519 key (under which a trivial signature verifies for any message) and an Ed25519
+signature whose R is a small-order point were two more until canonical 1.0.0 refused them as well;
+the two now refuse them in the same words. Some files are also refused when chosen, where the
 CLI would load them: a private key, a PKCS#1 `RSA PUBLIC KEY` and a certificate (each with the
 command that converts it), an RSA key with an even modulus or exponent or an exponent below 3, an RSA
 modulus over 16,384 bits, and anything that is not a regular file of at most 64 KiB.
@@ -134,8 +195,9 @@ rules selected" describes this archive, not its quality. Measuring is a button, 
 profile check per event per profile.
 
 **Observed Flow** — cross-application flows, built from `request.traceId` and
-`request.correlationId`. Observed, because ordering and identifiers are all it has: a causal graph
-would need `request.parentSpanId`, which the model does not carry.
+`request.correlationId`. Where events declare `request.parentSpanId` (added in OpenAuditModel 1.0),
+each caller is joined to the callee that names it, drawn solid; where they do not, neighbours in
+time are joined, drawn dashed and labelled as order in time only.
 An aggregated service map shows which applications hand work to which, with the transition count,
 median gap and failure count on each edge, and a health ring on each node. Selecting a flow
 highlights the path it actually took; selecting a node filters the events to that application.
@@ -157,7 +219,11 @@ Requires Node.js 22 or newer. Building the desktop application also needs the Ru
 Windows the MSVC build tools ("Desktop development with C++", from either the standalone Build Tools
 or a full Visual Studio installation). On macOS it needs the Xcode command line tools
 (`xcode-select --install`), and a universal build needs both Rust targets:
-`rustup target add aarch64-apple-darwin x86_64-apple-darwin`.
+`rustup target add aarch64-apple-darwin x86_64-apple-darwin`. The Kafka source builds librdkafka and
+OpenSSL from source. On an Apple Silicon Mac that needs nothing more. Windows, an Intel Mac and a
+universal build — whose x86_64 slice is compiled for another architecture — also need
+[CMake](https://cmake.org/download/) on the `PATH`, and Windows needs Perl (Strawberry Perl, which the
+CI runners already have).
 
 ```bash
 npm install
@@ -178,6 +244,19 @@ To have something to look at:
 ```bash
 npm run demo-logs      # writes demo-logs/, then open that folder in the app
 ```
+
+To try reading from Kafka, with Docker running:
+
+```bash
+npm run demo-logs
+eval "$(src-tauri/kafka-source/tests/broker/start.sh)"   # a local broker, fresh certificates
+tools/demo-kafka.sh                                       # the demo logs, on topic audit.demo
+tools/demo-kafka.sh --trickle                             # then one a second, to listen to
+```
+
+Then save a source with bootstrap server `localhost:9092` and no TLS — or `localhost:9094` with TLS
+and SASL, user `reader`, password `reader-secret`, and the CA file whose path `start.sh` printed.
+`src-tauri/kafka-source/tests/broker/stop.sh` removes the broker.
 
 The demo data is invented, deterministic and self-checking. It includes an intact hash chain, a
 chain broken in three specific ways, events that trip seven privacy rules, profile violations, and
@@ -204,11 +283,20 @@ exactly the two fixtures that moved, and the fix was one list.
 
 ## Security
 
-The threat model is hostile file content, not a hostile user: reading someone's audit archive should
-not compromise the machine reading it.
+The threat model is hostile content, not a hostile user: reading someone's audit archive — from a
+folder or from a broker — should not compromise the machine reading it, and reading from a broker
+should not change the broker.
 
-- Filesystem access is limited to the folder picked in the dialog and the file chosen when
-  exporting. The capabilities file grants no static path.
+- Reading from Kafka leaves nothing behind: partitions are assigned and sought, never subscribed, so
+  no consumer group is joined; no offset is committed; asking for a topic never creates it. A test
+  against a real broker holds each of these.
+- A Kafka source is saved only after a system dialog — which nothing in the webview can click —
+  names the brokers, the protection and the user. Its password goes to the system keychain, never
+  returns to the webview, and is sent only to the brokers, as the user and over the connection it
+  was entered for.
+
+- From the webview, filesystem access is limited to the folder picked in the dialog and the file
+  chosen when exporting. The capabilities file grants no static path.
 - The release build ships a Content-Security-Policy with no `unsafe-eval`; the schema validator is
   precompiled so that no runtime code generation is needed. CI fails if either regresses.
 - The webview cannot navigate away from the bundled app. External links open in the system browser
@@ -274,7 +362,10 @@ is not this project's.
   that it is a button, like the per-event digest sweep, rather than work every load pays for.
 - Loading still reads and validates every file before the table fills in. The table virtualizes, so
   scrolling stays smooth, but the initial pass over a big folder takes time.
-- Only JSON and JSON Lines are read; any other export has to be converted first.
+- Only JSON and JSON Lines are read, and from Kafka only record values that are JSON text; any other
+  export has to be converted first.
+- Reading from Kafka again replaces what is on screen; one read or one listening session runs at a
+  time. Listening follows the partitions the topic had when it started.
 - The schema, the profiles and the analysis engines all come from one pinned release, so they can
   lag the canonical repository until that pin is raised. A release the pin has not reached is not
   evaluated here, and a profile written in a rule vocabulary this build does not implement is

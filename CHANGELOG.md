@@ -4,10 +4,94 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-While the project is **experimental**, breaking changes are possible in any release and are labelled
-as such.
+Before 1.0, while the project was **experimental**, breaking changes were possible in any release and
+were labelled as such.
 
-## Unreleased
+## 1.0.0 - 2026-09-24
+
+Built against `@openauditmodel/cli` 1.0.0.
+
+OpenAuditModel 1.0 froze the specification, and this release reads it. An event is validated
+against the schema of the version it declares, so 1.0 events and events written under 0.1 are both
+read, and an event declaring a version this app does not implement is shown as not evaluated —
+neither valid nor invalid. The Observed Flow map draws the calls a flow's events declare, through
+the `request.parentSpanId` 1.0 added. The app reads a window of a Kafka topic as well as a folder —
+the first release that can open a connection to a host you choose, and only when you ask. And the
+release page now says what changed.
+
+### Added — a window of a Kafka topic can be read
+
+**Read from Kafka…** reads a window of a topic: the newest or oldest _n_ records across the topic by
+the time they carry, the newest _n_ of each partition, a time range, a range of offsets — one for
+every partition or one each — or everything from the oldest record. A filter on the event name, the
+application or the text of a record keeps only what matches, and the window says how many records
+were read and how many kept. **Keep listening** goes on after the window: new records are added to
+the screen as they arrive, under a Listening badge with a Stop beside it, and fade in at the top of
+the Events table, which opens a window newest read first. Every record's value
+becomes a row exactly as a line of a JSON Lines file does, judged by the same engines; its topic,
+partition and offset are its label, beside the event and never inside it.
+
+This is the first release that opens a network connection to a host the user chose. What that
+connection may do is the design:
+
+- **Nothing is left on the broker.** Partitions are assigned and sought, never subscribed, so no
+  consumer group is joined; no offset is committed; a missing topic is reported, never created.
+  Tests run against a real broker — PLAINTEXT and SASL over TLS, with PLAIN and both SCRAM
+  mechanisms — and assert each, including that the group the client names never appears in the
+  broker's group list.
+- **A source is saved only after a native confirmation** that names its brokers, its connection and
+  its user; nothing in the webview can click it. The password goes to the system keychain, never
+  returns to the webview, and is sent only to the brokers, as the user and over the connection it
+  was entered for — change any of those, or the CA, and it has to be entered again. The keychain
+  entry records what it was entered for and is checked on every read, and the webview is denied the
+  app's configuration folder, so a source list rewritten on disk cannot redirect it. A value the
+  dialog shows that holds a line break, a bidirectional override or an invisible character is
+  refused.
+- **TLS verifies the broker** against the public certificate authorities, carried in the app so
+  that macOS and Windows agree, or against a CA file chosen for a private one. SASL without TLS is
+  not offered; plaintext is its own choice, with a warning.
+- **A window is bounded** — 100,000 events, 256 MB, five minutes, 30 seconds without a record — and
+  says which bound ended it. Listening counts against the same 100,000 events and ends after eight
+  hours; tests against the broker hold that it hands back the window, then only what arrived, and
+  leaves no group behind.
+- **Chains are judged on the window.** A link across a hole the window left, where the events
+  before it were in a partition or a time the window did not reach, is reported as **not checked**
+  rather than as broken or held, and such a chain is counted apart in the Overview, the detail panel
+  and the report. Two neighbours that are both in the window and disagree are a broken link, as
+  anywhere.
+
+librdkafka is built from source and linked into the app, with OpenSSL, so the release ships no
+separate native library. Not supported in this release: client certificates, OAUTHBEARER and cloud
+sign-in such as AWS IAM, Kerberos, and values that are not JSON text.
+
+### Added — each event is validated against the schema of the version it declares
+
+The app compiles one validator per specification version the pinned package implements — 0.1 and
+1.0 — and selects between them with the package's own selection logic, so its answer for any
+declared version is the command line tool's. A test holds it to that for a newer minor, another
+major, a version never published, and every malformed form. An event of a version the app does not
+implement is marked **not evaluated**: `?` in the table, "Not evaluated" in the detail panel, its own
+count in the Overview and in the report, and never counted as valid or as invalid (ADR 0017 §3).
+
+### Added — the flow map follows the calls events declare
+
+`request.parentSpanId` names the span that caused an event's own. Where a flow's events declare it,
+the Observed Flow map joins each caller to the callee that names it, drawn solid; where they do not,
+it falls back to joining neighbours in time, drawn dashed and labelled as order in time only.
+Concurrent calls interleave in time, so neighbours in time had joined a callee to whichever call
+happened to come just before it; a test holds the map to the declared structure in exactly that case.
+
+### Changed — pinned to `@openauditmodel/cli` 1.0.0
+
+The parity suite passes against 1.0's fixtures and against the sealed 0.1 corpus the package keeps,
+so archives sealed under 0.1 still verify here.
+
+### Changed — two signature divergences are agreements
+
+Canonical 1.0.0 refuses a small-order Ed25519 key and a signature whose R is a small-order point,
+which this app already refused. The two vectors that recorded the difference now record agreement,
+and the app gives the CLI's reasons in the CLI's words rather than "signature does not match". One
+deliberate difference remains: an RSASSA-PSS key that restricts its own parameters.
 
 ### Fixed — a release page says what changed
 

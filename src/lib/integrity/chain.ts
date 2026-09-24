@@ -185,6 +185,30 @@ async function verifyOneChain(
 
     if (predecessor.hash === undefined || !digestsEqual(member.previousHash, predecessor.hash)) {
       linksValid = false;
+      // In a window read from a stream, the event before this one may simply
+      // not be in the window: reading the last records of each partition, or
+      // from a point in time, leaves holes wherever a chain's events are
+      // spread across partitions. A hole is where a mismatch cannot be told
+      // from a missing predecessor, so it is reported as not checked — never
+      // as held, and never as broken. Two neighbours that are both present
+      // and disagree are a broken link in a window as anywhere.
+      const gap =
+        member.sequence !== undefined &&
+        predecessor.sequence !== undefined &&
+        member.sequence - predecessor.sequence > 1;
+      if (options.windowed === true && gap) {
+        findings.push({
+          kind: "link-outside-window",
+          label: member.label,
+          message:
+            "the event before this one in the chain is outside the window that was read, so this link was not checked",
+          detail: [
+            `sequences ${(predecessor.sequence as number) + 1}–${(member.sequence as number) - 1} are not in the window`,
+            "read the topic from its earliest offset to check the whole chain",
+          ],
+        });
+        continue;
+      }
       findings.push({
         kind: "broken-link",
         label: member.label,
@@ -246,6 +270,11 @@ async function verifyOneChain(
 export interface VerifyChainsOptions {
   /** The key to verify each member's `integrity.signature` against. */
   readonly signatureVerifier?: SignatureVerifier;
+  /**
+   * The events are a window read from a stream rather than an archive, so a
+   * hole in a chain may be the window's edge rather than a removed event.
+   */
+  readonly windowed?: boolean;
 }
 
 export async function verifyChains(
