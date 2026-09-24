@@ -5,7 +5,7 @@
 //! test` stays green on a machine without Docker. CI runs them with it.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::executor::block_on;
 use oav_kafka::{
@@ -56,6 +56,31 @@ fn create_topic(broker: &str, topic: &str, partitions: i32) {
     .expect("create topics");
     for result in results {
         result.expect("topic created");
+    }
+
+    // Created by the controller is not yet described by the broker: on a
+    // slow machine a read that follows at once can find no such topic. Wait
+    // until the broker describes every partition, with a leader.
+    let consumer: BaseConsumer = ClientConfig::new()
+        .set("bootstrap.servers", broker)
+        .set("allow.auto.create.topics", "false")
+        .create()
+        .expect("consumer");
+    let until = Instant::now() + Duration::from_secs(15);
+    loop {
+        let described = consumer.fetch_metadata(Some(topic), Duration::from_secs(5)).is_ok_and(|metadata| {
+            metadata.topics().iter().any(|described| {
+                described.name() == topic
+                    && described.error().is_none()
+                    && described.partitions().len() == partitions as usize
+                    && described.partitions().iter().all(|partition| partition.leader() >= 0)
+            })
+        });
+        if described {
+            return;
+        }
+        assert!(Instant::now() < until, "topic {topic} was created but the broker never described it");
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
