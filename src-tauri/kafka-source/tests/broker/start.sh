@@ -33,7 +33,12 @@ cat "$certs/server.pk8" "$certs/server.crt" "$certs/ca.pem" >"$certs/server.pem"
 chmod 0644 "$certs"/*
 
 docker rm -f "$name" >/dev/null 2>&1 || true
-docker run -d --name "$name" -p 127.0.0.1:9092:9092 -p 127.0.0.1:9094:9094 \
+# Published on the loopback only, and on both of its addresses: "localhost"
+# resolves to ::1 first on Linux and macOS, and a client that finds nothing
+# there reports the refusal before it tries 127.0.0.1.
+docker run -d --name "$name" \
+  -p 127.0.0.1:9092:9092 -p "[::1]:9092:9092" \
+  -p 127.0.0.1:9094:9094 -p "[::1]:9094:9094" \
   -v "$here/server.properties:/config/server.properties:ro" \
   -v "$certs:/certs:ro" \
   --entrypoint /bin/bash "$image" -c '

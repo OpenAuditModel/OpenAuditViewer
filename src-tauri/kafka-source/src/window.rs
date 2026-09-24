@@ -11,7 +11,7 @@ use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use serde::{Deserialize, Serialize};
 
 use crate::connection::{validate_topic, Connection};
-use crate::context::Context;
+use crate::context::{Context, Refusal};
 
 /// Most events one window holds: the viewer's own ceiling for a folder.
 pub const MAX_WINDOW_EVENTS: usize = 100_000;
@@ -299,17 +299,15 @@ impl std::error::Error for FetchError {}
 /// Turns a librdkafka error into one the viewer can show, with the reason the
 /// error callback gave when there was one.
 fn explain(error: &KafkaError, context: &Context, topic: &str) -> FetchError {
-    let reason = context.last_error();
+    let reason = context.reason();
     let with_reason = |message: &str| match &reason {
         Some(reason) => format!("{message}: {reason}"),
         None => message.to_owned(),
     };
     let code = error.rdkafka_error_code();
-    let lower = reason.as_deref().unwrap_or("").to_ascii_lowercase();
-    // A listener's name ("sasl_ssl://...") appears in every reason on that
-    // listener, so neither word alone decides anything.
-    let certificate = lower.contains("certificate verify") || lower.contains("ssl handshake failed");
-    let authentication = !certificate && lower.contains("authentication");
+    let refusal = reason.as_deref().map_or(Refusal::Other, Refusal::of);
+    let certificate = refusal == Refusal::Certificate;
+    let authentication = refusal == Refusal::Credentials;
     match code {
         Some(RDKafkaErrorCode::UnknownTopicOrPartition | RDKafkaErrorCode::UnknownTopic) => {
             FetchError::TopicMissing(format!("the cluster has no topic \"{topic}\""))
@@ -342,14 +340,18 @@ fn explain(error: &KafkaError, context: &Context, topic: &str) -> FetchError {
 /// that the error callback has seen the reason — "SSL handshake failed",
 /// "SASL authentication error" — before an error is explained. A metadata
 /// request that failed says only that no broker answered.
+///
+/// Every queued event is served, not only the first: the first can be an
+/// address that refused the connection, queued before the one that answered
+/// said why it turned the client away.
 fn collect_reasons(consumer: &BaseConsumer<Context>) {
-    for _ in 0..10 {
+    let until = Instant::now() + Duration::from_millis(500);
+    while !consumer.context().refused() && Instant::now() < until {
         match consumer.poll(Duration::from_millis(50)) {
             Some(Err(error)) => consumer.context().note(&error),
-            Some(Ok(_)) | None => {}
-        }
-        if consumer.context().last_error().is_some() {
-            break;
+            Some(Ok(_)) => {}
+            None if consumer.context().reason().is_some() => break,
+            None => {}
         }
     }
 }
